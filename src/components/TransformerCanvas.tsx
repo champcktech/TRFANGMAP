@@ -182,6 +182,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   useEffect(() => {
     // Keyboard delete shortcut for any selected element
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isReadOnly) return;
       const activeTag = document.activeElement?.tagName?.toLowerCase();
       if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
 
@@ -553,6 +554,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   // Add a new point between index and index + 1
   const handleAddPointBetween = (pathId: string, afterIndex: number, midpoint: { x: number; y: number }, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isReadOnly) return;
     const targetPath = feederPaths.find(p => p.id === pathId);
     if (!targetPath || !onUpdateFeederPath) return;
     const newPoints = [...targetPath.points];
@@ -563,6 +565,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   // Delete a point from path
   const handleDeleteVertex = (pathId: string, pointIndex: number, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isReadOnly) return;
     const targetPath = feederPaths.find(p => p.id === pathId);
     if (!targetPath || !onUpdateFeederPath || targetPath.points.length <= 2) return;
     const newPoints = targetPath.points.filter((_, idx) => idx !== pointIndex);

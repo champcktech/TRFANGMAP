@@ -95,17 +95,19 @@ export const SwitchDrawer: React.FC<SwitchDrawerProps> = ({
             {formData.status === 'opened' ? '⚪ ปลดสวิตช์ (Opened / Normal Open)' : '🟢 สับสวิตช์ (Closed / ไฟผ่านปกติ)'}
           </span>
         </div>
-        <button
-          onClick={handleToggleStatus}
-          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 ${
-            formData.status === 'opened'
-              ? 'bg-amber-500 hover:bg-amber-600 text-white'
-              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-          }`}
-        >
-          {formData.status === 'opened' ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
-          <span>สลับสถานะ</span>
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={handleToggleStatus}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 ${
+              formData.status === 'opened'
+                ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+          >
+            {formData.status === 'opened' ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
+            <span>สลับสถานะ</span>
+          </button>
+        )}
       </div>
 
       {/* Code / Tag Name Input */}
@@ -115,10 +117,11 @@ export const SwitchDrawer: React.FC<SwitchDrawerProps> = ({
         </label>
         <input
           type="text"
+          disabled={isReadOnly}
           value={formData.code}
           onChange={(e) => handleChange('code', e.target.value)}
           placeholder="เช่น 3S-05, 8F-07, FAA-09"
-          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800"
         />
       </div>
 
@@ -128,9 +131,10 @@ export const SwitchDrawer: React.FC<SwitchDrawerProps> = ({
           ประเภทอุปกรณ์ (Device Type)
         </label>
         <select
+          disabled={isReadOnly}
           value={formData.type}
           onChange={(e) => handleChange('type', e.target.value)}
-          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800"
         >
           <option value="ABS">ABS (Air Break Switch / สวิตช์ใบมีด)</option>
           <option value="DISCONNECT">DISCONNECT (Disconnecting Switch)</option>

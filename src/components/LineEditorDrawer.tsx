@@ -104,23 +104,25 @@ export const LineEditorDrawer: React.FC<LineEditorDrawerProps> = ({
         </label>
         <div className="grid grid-cols-2 gap-2">
           <button
+            disabled={isReadOnly}
             onClick={() => handleStyleChange('solid')}
             className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
               (selectedPath.style || 'solid') === 'solid'
                 ? 'bg-blue-50 border-blue-500 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300'
                 : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
+            } disabled:cursor-not-allowed disabled:opacity-60`}
           >
             <div className="w-6 h-0.5 bg-current"></div>
             <span>เส้นทึบ (สายหลัก)</span>
           </button>
           <button
+            disabled={isReadOnly}
             onClick={() => handleStyleChange('dashed')}
             className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
               selectedPath.style === 'dashed'
                 ? 'bg-blue-50 border-blue-500 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300'
                 : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
+            } disabled:cursor-not-allowed disabled:opacity-60`}
           >
             <div className="w-6 h-0.5 border-b-2 border-dashed border-current"></div>
             <span>เส้นประ (Tie Line)</span>
@@ -138,12 +140,13 @@ export const LineEditorDrawer: React.FC<LineEditorDrawerProps> = ({
         </div>
         <input
           type="range"
+          disabled={isReadOnly}
           min="1"
           max="6"
           step="0.5"
           value={selectedPath.strokeWidth || 2.5}
           onChange={(e) => handleStrokeWidthChange(parseFloat(e.target.value))}
-          className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+          className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
         />
         <div className="flex justify-between text-[10px] text-slate-400">
           <span>1px (บาง)</span>
@@ -161,12 +164,13 @@ export const LineEditorDrawer: React.FC<LineEditorDrawerProps> = ({
           {colorOptions.map((c) => (
             <button
               key={c.value}
+              disabled={isReadOnly}
               onClick={() => handleColorChange(c.value)}
               className={`p-2 rounded-xl text-[11px] font-medium border flex items-center gap-1.5 transition-all ${
                 (selectedPath.color || '#000000') === c.value
                   ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/50 dark:bg-blue-950/30'
                   : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
+              } disabled:cursor-not-allowed disabled:opacity-60`}
             >
               <div
                 className="w-3.5 h-3.5 rounded-full border border-slate-300 shadow-sm shrink-0"
@@ -198,7 +202,7 @@ export const LineEditorDrawer: React.FC<LineEditorDrawerProps> = ({
               <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
                 X: {pt.x}, Y: {pt.y}
               </span>
-              {selectedPath.points.length > 2 ? (
+              {!isReadOnly && selectedPath.points.length > 2 ? (
                 <button
                   onClick={() => {
                     const newPoints = selectedPath.points.filter((_, i) => i !== idx);
@@ -217,7 +221,9 @@ export const LineEditorDrawer: React.FC<LineEditorDrawerProps> = ({
         </div>
 
         <p className="text-[10px] text-slate-400 leading-relaxed pt-1">
-          * คลิกลากจุดวงกลมบนเส้นเพื่อดัดแนว, ดับเบิ้ลคลิกเพื่อลบจุด หรือคลิกปุ่ม <b>+</b> บนเส้นเพื่อเพิ่มมุมหัก
+          {isReadOnly 
+            ? '*โหมดแสดงผล (Read-Only) ล็อคการแก้ไขเส้นวงจร'
+            : '*คลิกลากจุดวงกลมบนเส้นเพื่อดัดแนว, ดับเบิ้ลคลิกเพื่อลบจุด หรือคลิกปุ่ม + บนเส้นเพื่อเพิ่มมุมหัก'}
         </p>
       </div>
 
