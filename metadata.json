@@ -1,0 +1,6 @@
+{
+  "name": "ผังหม้อแปลง กฟส.ฝาง (Transformer SLD)",
+  "description": "โปรแกรมแสดงและจัดการผังหม้อแปลงไฟฟ้า การไฟฟ้าส่วนภูมิภาคสาขาอำเภอฝาง (กฟส.ฝาง) ซิงค์ Google Sheets พร้อมระบบเพิ่ม ลบ แก้ไข และพิมพ์ผังวงจร",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,102 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSharedWorkspace(workspaceId) {
+      return workspaceId == 'pea-fang-shared';
+    }
+
+    function isValidSheet(data) {
+      return data.keys().hasAll([
+        'sheetNo',
+        'title',
+        'feederCode',
+        'substation',
+        'description',
+        'transformers',
+        'switches',
+        'feederPaths',
+        'annotations',
+        'workspaceId',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'sheetNo',
+        'title',
+        'feederCode',
+        'substation',
+        'description',
+        'transformers',
+        'switches',
+        'feederPaths',
+        'annotations',
+        'workspaceId',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.sheetNo is string && data.sheetNo.size() >= 1 && data.sheetNo.size() <= 32 &&
+      data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+      data.feederCode is string && data.feederCode.size() <= 64 &&
+      data.substation is string && data.substation.size() <= 200 &&
+      data.description is string && data.description.size() <= 500 &&
+      data.transformers is list && data.transformers.size() <= 300 && (data.transformers.size() == 0 || data.transformers[0] is map) &&
+      data.switches is list && data.switches.size() <= 200 && (data.switches.size() == 0 || data.switches[0] is map) &&
+      data.feederPaths is list && data.feederPaths.size() <= 200 && (data.feederPaths.size() == 0 || data.feederPaths[0] is map) &&
+      data.annotations is list && data.annotations.size() <= 200 && (data.annotations.size() == 0 || data.annotations[0] is map) &&
+      isValidId(data.workspaceId) &&
+      isSharedWorkspace(data.workspaceId) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    match /sheets/{sheetId} {
+      allow get: if isValidId(sheetId) && (resource == null || isSharedWorkspace(existing().workspaceId));
+      allow list: if existing().workspaceId == 'pea-fang-shared';
+
+      allow create: if isValidId(sheetId) &&
+        isValidSheet(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isValidId(sheetId) &&
+        isValidSheet(incoming()) &&
+        isSharedWorkspace(existing().workspaceId) &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'sheetNo',
+          'title',
+          'feederCode',
+          'substation',
+          'description',
+          'transformers',
+          'switches',
+          'feederPaths',
+          'annotations',
+          'updatedAt'
+        ]);
+
+      allow delete: if isValidId(sheetId) &&
+        isSharedWorkspace(existing().workspaceId);
+    }
+  }
+}

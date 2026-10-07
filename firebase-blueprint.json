@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "DiagramSheet": {
+      "title": "DiagramSheet",
+      "description": "Represents a shared single-line diagram sheet containing transformers, switches, feeder lines, and annotations.",
+      "type": "object",
+      "properties": {
+        "sheetNo": {
+          "type": "string",
+          "description": "Sheet number label such as (1), (2)",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the diagram sheet",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "feederCode": {
+          "type": "string",
+          "description": "Feeder code identifier such as FAA-06",
+          "minLength": 0,
+          "maxLength": 64
+        },
+        "substation": {
+          "type": "string",
+          "description": "Substation name",
+          "minLength": 0,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "description": "Sheet description",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "transformers": {
+          "type": "array",
+          "description": "List of transformer objects on this diagram sheet"
+        },
+        "switches": {
+          "type": "array",
+          "description": "List of switch and cutout objects on this diagram sheet"
+        },
+        "feederPaths": {
+          "type": "array",
+          "description": "List of feeder line path objects on this diagram sheet"
+        },
+        "annotations": {
+          "type": "array",
+          "description": "List of text annotation labels on this diagram sheet"
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "Shared workspace identifier (pea-fang-shared) so all team members access the same diagrams without login",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the sheet was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the sheet was last updated"
+        }
+      },
+      "required": [
+        "sheetNo",
+        "title",
+        "feederCode",
+        "substation",
+        "description",
+        "transformers",
+        "switches",
+        "feederPaths",
+        "annotations",
+        "workspaceId",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/sheets/{sheetId}": {
+      "schema": {
+        "$ref": "#/entities/DiagramSheet"
+      },
+      "description": "Stores shared diagram sheets for all users under workspaceId pea-fang-shared."
+    }
+  }
+}
