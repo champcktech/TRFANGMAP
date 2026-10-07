@@ -1429,7 +1429,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   onSelectTransformer(null);
                   onSelectPath?.(null);
                   onSelectSwitch?.(null);
-                  onSelectAnnotation?.(label);
+                  const original = annotations.find(orig => orig.id === label.id) || label;
+                  onSelectAnnotation?.(original);
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
@@ -1606,7 +1607,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   onSelectTransformer(null);
                   onSelectPath?.(null);
                   onSelectAnnotation?.(null);
-                  onSelectSwitch?.(sw);
+                  const original = switches.find(orig => orig.id === sw.id) || sw;
+                  onSelectSwitch?.(original);
                 }}
                 onMouseDown={(e) => startDrag('switch', sw.id, sw.x, sw.y, e)}
               >

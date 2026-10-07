@@ -117,11 +117,19 @@ export function transformDataToLandscape(
   }));
 
   const annos = annotations.map(a => {
-    const { x, y } = transformPointToLandscape(a.x, a.y);
+    let srcX = a.x;
+    let srcY = a.y;
+    // หากพิกัดถูกบันทึกเป็นแนวนอนเกินขนาดผังแนวตั้ง (เกิดจากบั๊กเดิม) ให้แปลงกลับเป็นแนวตั้งอัตโนมัติ
+    if (srcX > 1100 || srcY > 1100) {
+      const portrait = transformPointToPortrait(srcX, srcY);
+      srcX = portrait.x;
+      srcY = portrait.y;
+    }
+    const { x, y } = transformPointToLandscape(srcX, srcY);
     return {
       ...a,
-      x,
-      y,
+      x: Math.max(30, Math.min(x, 2300)),
+      y: Math.max(30, Math.min(y, 1300)),
       orientation: a.orientation || 'horizontal'
     };
   });
