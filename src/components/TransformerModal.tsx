@@ -24,6 +24,7 @@ import {
   getCurrentDeviceLocation, 
   isValidLatLng 
 } from '../utils/geoUtils';
+import { getTransformerGeometry } from '../utils/orientation';
 
 interface TransformerModalProps {
   isOpen: boolean;
@@ -55,7 +56,9 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
     branch: 'สายเมน เชียงใหม่-ฝาง',
     x: 400,
     y: 400,
-    orientation: 'left',
+    orientation: 'top',
+    stemDirection: undefined,
+    textPosition: 'auto',
     notes: '',
     latitude: undefined,
     longitude: undefined
@@ -87,7 +90,9 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
         branch: 'สายเมน เชียงใหม่-ฝาง',
         x: defaultPosition?.x || 400,
         y: defaultPosition?.y || 400,
-        orientation: 'left',
+        orientation: 'top',
+        stemDirection: undefined,
+        textPosition: 'auto',
         notes: '',
         latitude: undefined,
         longitude: undefined
@@ -200,7 +205,9 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
       branch: formData.branch?.trim() || '',
       x: Number(formData.x) || 400,
       y: Number(formData.y) || 400,
-      orientation: formData.orientation || 'left',
+      orientation: formData.orientation || 'top',
+      stemDirection: formData.stemDirection,
+      textPosition: formData.textPosition || 'auto',
       notes: formData.notes?.trim() || '',
       latitude: lat,
       longitude: lng
@@ -394,8 +401,8 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
             </div>
           </div>
 
-          {/* Row 4: Phase, Voltage, Orientation */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Row 4: Phase & Voltage */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 ระบบเฟส
@@ -403,7 +410,7 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
               <select
                 value={formData.phase || '3P'}
                 onChange={e => setFormData({ ...formData, phase: e.target.value as any })}
-                className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+                className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-200"
               >
                 <option value="3P">3 เฟส (3P)</option>
                 <option value="1P">1 เฟส (1P)</option>
@@ -418,29 +425,294 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
               <select
                 value={formData.voltage || '22 kV'}
                 onChange={e => setFormData({ ...formData, voltage: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+                className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-200"
               >
-                <option value="22 kV">22 kV</option>
+                <option value="22 kV">22 kV (มาตรฐาน)</option>
                 <option value="33 kV">33 kV</option>
-                <option value="400V">400 V</option>
+                <option value="400V">400 V (แรงต่ำ)</option>
               </select>
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
-                <Compass className="w-3 h-3 text-slate-500" />
-                <span>ทิศทางสัญลักษณ์</span>
+          {/* Row 5: Symbol Orientation Selector with Visual Direction Buttons & Live Text Position */}
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Compass className="w-4 h-4 text-blue-500" />
+                <span>ทิศทางสัญลักษณ์หม้อแปลงบนผัง</span>
               </label>
-              <select
-                value={formData.orientation || 'left'}
-                onChange={e => setFormData({ ...formData, orientation: e.target.value as any })}
-                className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+              <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">
+                {formData.orientation === 'top' || !formData.orientation ? '⬆️ ชี้บน (Top)' :
+                 formData.orientation === 'bottom' ? '⬇️ ชี้ล่าง (Bottom)' :
+                 formData.orientation === 'right' ? '➡️ ชี้ขวา (Right)' :
+                 '⬅️ ชี้ซ้าย (Left)'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {/* Option 1: Top (ชี้บน) */}
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, orientation: 'top' })}
+                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
+                  formData.orientation === 'top' || !formData.orientation
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/30 font-bold shadow-xs'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                }`}
               >
-                <option value="left">ชี้ซ้าย (Left)</option>
-                <option value="right">ชี้ขวา (Right)</option>
-                <option value="top">ชี้บน (Top)</option>
-                <option value="bottom">ชี้ล่าง (Bottom)</option>
-              </select>
+                <svg width="24" height="24" viewBox="0 0 24 24" className="shrink-0">
+                  <polygon
+                    points="12,3 20,17 4,17"
+                    fill={formData.type === 'private' ? '#0f172a' : '#ffffff'}
+                    stroke={formData.type === 'private' && (formData.orientation === 'top' || !formData.orientation) ? '#2563eb' : '#0f172a'}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  />
+                  <line x1="12" y1="17" x2="12" y2="23" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <div className="text-center">
+                  <div className="text-xs">ชี้บน (Top)</div>
+                  <div className="text-[10px] text-slate-400 font-normal">ปลายชี้ขึ้น ⬆️</div>
+                </div>
+              </button>
+
+              {/* Option 2: Bottom (ชี้ล่าง) */}
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, orientation: 'bottom' })}
+                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
+                  formData.orientation === 'bottom'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/30 font-bold shadow-xs'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" className="shrink-0">
+                  <polygon
+                    points="12,21 20,7 4,7"
+                    fill={formData.type === 'private' ? '#0f172a' : '#ffffff'}
+                    stroke={formData.type === 'private' && formData.orientation === 'bottom' ? '#2563eb' : '#0f172a'}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  />
+                  <line x1="12" y1="1" x2="12" y2="7" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <div className="text-center">
+                  <div className="text-xs">ชี้ล่าง (Bottom)</div>
+                  <div className="text-[10px] text-slate-400 font-normal">ปลายชี้ลง ⬇️</div>
+                </div>
+              </button>
+
+              {/* Option 3: Left (ชี้ซ้าย) */}
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, orientation: 'left' })}
+                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
+                  formData.orientation === 'left'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/30 font-bold shadow-xs'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" className="shrink-0">
+                  <polygon
+                    points="3,12 17,4 17,20"
+                    fill={formData.type === 'private' ? '#0f172a' : '#ffffff'}
+                    stroke={formData.type === 'private' && formData.orientation === 'left' ? '#2563eb' : '#0f172a'}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  />
+                  <line x1="17" y1="12" x2="23" y2="12" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <div className="text-center">
+                  <div className="text-xs">ชี้ซ้าย (Left)</div>
+                  <div className="text-[10px] text-slate-400 font-normal">ปลายชี้ซ้าย ⬅️</div>
+                </div>
+              </button>
+
+              {/* Option 4: Right (ชี้ขวา) */}
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, orientation: 'right' })}
+                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
+                  formData.orientation === 'right'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/30 font-bold shadow-xs'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" className="shrink-0">
+                  <polygon
+                    points="21,12 7,4 7,20"
+                    fill={formData.type === 'private' ? '#0f172a' : '#ffffff'}
+                    stroke={formData.type === 'private' && formData.orientation === 'right' ? '#2563eb' : '#0f172a'}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  />
+                  <line x1="1" y1="12" x2="7" y2="12" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <div className="text-center">
+                  <div className="text-xs">ชี้ขวา (Right)</div>
+                  <div className="text-[10px] text-slate-400 font-normal">ปลายชี้ขวา ➡️</div>
+                </div>
+              </button>
+            </div>
+
+            {/* Stem Line Direction Selector (4 directions) */}
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-700/80">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <span>ทิศทางเส้นที่ออกจากหม้อแปลง (ก้านต่อสาย 4 ทิศ)</span>
+                </label>
+                <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                  {formData.stemDirection === 'top' ? '⬆️ ออกด้านบน (Top)' :
+                   formData.stemDirection === 'bottom' ? '⬇️ ออกด้านล่าง (Bottom)' :
+                   formData.stemDirection === 'left' ? '⬅️ ออกด้านซ้าย (Left)' :
+                   formData.stemDirection === 'right' ? '➡️ ออกด้านขวา (Right)' :
+                   formData.stemDirection === 'none' ? '🚫 ไม่มีเส้น (None)' :
+                   '⚡ ตามสัญลักษณ์ (อัตโนมัติ)'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                {[
+                  { value: undefined, label: '⚡ อัตโนมัติ', desc: 'ตามทิศทาง' },
+                  { value: 'top', label: '⬆️ บน', desc: 'ออกด้านบน' },
+                  { value: 'bottom', label: '⬇️ ล่าง', desc: 'ออกด้านล่าง' },
+                  { value: 'left', label: '⬅️ ซ้าย', desc: 'ออกด้านซ้าย' },
+                  { value: 'right', label: '➡️ ขวา', desc: 'ออกด้านขวา' },
+                  { value: 'none', label: '🚫 ไม่มีเส้น', desc: 'ไม่แสดงเส้น' }
+                ].map(opt => (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, stemDirection: opt.value as any })}
+                    className={`py-1.5 px-2 text-[11px] font-semibold rounded-lg border transition-all text-center cursor-pointer ${
+                      formData.stemDirection === opt.value
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs ring-1 ring-blue-500'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <div>{opt.label}</div>
+                    <div className="text-[9px] opacity-75 font-normal">{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Position of text relative to symbol */}
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-700/80">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <span>ตำแหน่งตัวอักษร (ไม่ทับสัญลักษณ์)</span>
+                </label>
+                <span className="text-[10px] text-slate-500">
+                  {formData.textPosition === 'right' ? 'ด้านขวา' :
+                   formData.textPosition === 'left' ? 'ด้านซ้าย' :
+                   formData.textPosition === 'bottom' ? 'ด้านล่าง' :
+                   formData.textPosition === 'top' ? 'ด้านบน' : 'จัดอัตโนมัติ (แนะนำ)'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                {[
+                  { value: 'auto', label: '⚡ อัตโนมัติ' },
+                  { value: 'right', label: '➡️ ด้านขวา' },
+                  { value: 'left', label: '⬅️ ด้านซ้าย' },
+                  { value: 'bottom', label: '⬇️ ด้านล่าง' },
+                  { value: 'top', label: '⬆️ ด้านบน' }
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, textPosition: opt.value as any })}
+                    className={`py-1.5 px-2 text-[11px] font-semibold rounded-lg border transition-all text-center cursor-pointer ${
+                      (formData.textPosition || 'auto') === opt.value
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Live Diagram Preview Box inside Modal */}
+            <div className="mt-2.5 p-3 bg-white dark:bg-slate-900 rounded-xl border border-blue-200/80 dark:border-blue-900/60 shadow-xs">
+              <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 mb-1.5 flex items-center justify-between">
+                <span>ตัวอย่างการแสดงผลสัญลักษณ์และข้อความจริงบนผัง:</span>
+                <span className="text-[10px] font-normal text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <Check className="w-3 h-3" /> ตัวอักษรแยกชัดเจน ไม่ทับสัญลักษณ์
+                </span>
+              </div>
+              <div className="h-20 flex items-center justify-center bg-slate-50 dark:bg-slate-950/60 rounded-lg border border-slate-100 dark:border-slate-800 px-3 overflow-hidden">
+                <svg width="100%" height="70" viewBox="0 0 280 70" className="max-w-[280px]">
+                  {/* Dynamic Preview Rendering matching Canvas */}
+                  {(() => {
+                    const ori = formData.orientation || 'top';
+                    const pos = formData.textPosition || 'auto';
+                    const isPriv = formData.type === 'private';
+                    const fill = isPriv ? '#0f172a' : '#ffffff';
+                    const stroke = '#0f172a';
+
+                    const { triPoints, stemLine, effStemDir } = getTransformerGeometry(ori, formData.stemDirection);
+
+                    let cx = 45;
+                    let cy = 35;
+
+                    let effPos = pos === 'auto' ? (effStemDir === 'right' ? 'right' : 'right') : pos;
+                    let tX = 75;
+                    let tAnchor: 'start' | 'middle' | 'end' = 'start';
+                    if (effPos === 'left') {
+                      cx = 230;
+                      tX = 200;
+                      tAnchor = 'end';
+                    }
+
+                    return (
+                      <g>
+                        {/* Connecting branch wire guide */}
+                        <line x1={0} y1={35} x2={280} y2={35} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="3,3" />
+
+                        {/* Node */}
+                        <g transform={`translate(${cx}, ${cy})`}>
+                          {stemLine && (
+                            <line
+                              x1={stemLine.x1}
+                              y1={stemLine.y1}
+                              x2={stemLine.x2}
+                              y2={stemLine.y2}
+                              stroke={stroke}
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                            />
+                          )}
+                          <polygon points={triPoints} fill={fill} stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+                        </g>
+
+                        {/* Text Card Plate */}
+                        <g transform={`translate(${tX}, 14)`}>
+                          <rect
+                            x={tAnchor === 'end' ? -150 : -4}
+                            y={-4}
+                            width="155"
+                            height="46"
+                            rx="5"
+                            fill="#ffffff"
+                            stroke="#94a3b8"
+                            strokeWidth="1"
+                          />
+                          <text x={0} y={11} fontSize="11" fontWeight="800" fill={isPriv ? '#9333ea' : '#2563eb'} textAnchor={tAnchor}>
+                            {formData.kva || 50} kVA
+                          </text>
+                          <text x={0} y={23} fontSize="10" fontWeight="700" fontFamily="monospace" fill="#334155" textAnchor={tAnchor}>
+                            {formData.peaNo || '54-003396'}
+                          </text>
+                          <text x={0} y={35} fontSize="10" fontWeight="600" fill="#0f172a" textAnchor={tAnchor}>
+                            {formData.name || 'ชื่อสถานที่ / ผู้ใช้ไฟ'}
+                          </text>
+                        </g>
+                      </g>
+                    );
+                  })()}
+                </svg>
+              </div>
             </div>
           </div>
 

@@ -280,8 +280,35 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
           </div>
           <div>
             <div className="text-slate-400 text-[11px]">ทิศทางสัญลักษณ์</div>
-            <div className="font-medium text-slate-700 dark:text-slate-300 mt-0.5 capitalize">
-              {transformer.orientation || 'top'}
+            <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+              {transformer.orientation === 'top' ? '⬆️ ชี้บน' :
+               transformer.orientation === 'bottom' ? '⬇️ ชี้ล่าง' :
+               transformer.orientation === 'right' ? '➡️ ชี้ขวา' :
+               '⬅️ ชี้ซ้าย'}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-700/60">
+          <div>
+            <div className="text-slate-400 text-[11px]">เส้นออกจากสัญลักษณ์</div>
+            <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+              {transformer.stemDirection === 'top' ? '⬆️ ออกบน' :
+               transformer.stemDirection === 'bottom' ? '⬇️ ออกล่าง' :
+               transformer.stemDirection === 'left' ? '⬅️ ออกซ้าย' :
+               transformer.stemDirection === 'right' ? '➡️ ออกขวา' :
+               transformer.stemDirection === 'none' ? '🚫 ไม่มีเส้น' :
+               '⚡ อัตโนมัติ'}
+            </div>
+          </div>
+          <div>
+            <div className="text-slate-400 text-[11px]">ตำแหน่งตัวอักษร</div>
+            <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+              {transformer.textPosition === 'right' ? 'ด้านขวา' :
+               transformer.textPosition === 'left' ? 'ด้านซ้าย' :
+               transformer.textPosition === 'top' ? 'ด้านบน' :
+               transformer.textPosition === 'bottom' ? 'ด้านล่าง' :
+               'อัตโนมัติ'}
             </div>
           </div>
         </div>

@@ -14,7 +14,6 @@ import {
   Unlock, 
   Share2,
   Eye,
-  Edit3,
   ChevronDown,
   Layers,
   ExternalLink,
@@ -264,18 +263,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           <Printer className="w-3.5 h-3.5" />
         </button>
 
-        {/* Add Transformer Button OR Switch to Editor Mode */}
-        {isReadOnly ? (
-          <button
-            id="btn-toggle-editor-mode"
-            onClick={onToggleReadOnly}
-            title="สลับเข้าสู่โหมดแก้ไขผังวงจร (Editor Mode)"
-            className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">โหมดแก้ไข</span>
-          </button>
-        ) : (
+        {/* Add Transformer Button (Editor mode only - hidden in view mode) */}
+        {!isReadOnly && (
           <button
             id="btn-add-transformer"
             onClick={onOpenAddModal}

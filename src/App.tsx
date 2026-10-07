@@ -692,45 +692,64 @@ export default function App() {
 
   // Feeder Path Handlers
   const handleUpdateFeederPath = useCallback((updated: FeederPath) => {
+    if (isReadOnly) return;
     setFeederPaths(prev => prev.map(p => p.id === updated.id ? updated : p));
     setSelectedPath(curr => (curr?.id === updated.id ? updated : curr));
-  }, [setFeederPaths]);
+  }, [isReadOnly, setFeederPaths]);
 
   const handleDeleteFeederPath = useCallback((id: string) => {
+    if (isReadOnly) return;
     setFeederPaths(prev => prev.filter(p => p.id !== id));
     setSelectedPath(curr => (curr?.id === id ? null : curr));
     showToast('ลบเส้นวงจรเรียบร้อยแล้ว', 'info');
-  }, [setFeederPaths, showToast]);
+  }, [isReadOnly, setFeederPaths, showToast]);
 
   const handleAddFeederPath = useCallback((newPath: FeederPath) => {
+    if (isReadOnly) return;
     setFeederPaths(prev => [...prev, newPath]);
     setSelectedPath(newPath);
     showToast(`เพิ่มเส้นวงจร ${newPath.name} เรียบร้อยแล้ว`);
-  }, [setFeederPaths, showToast]);
+  }, [isReadOnly, setFeederPaths, showToast]);
 
   const handleAddPointToPath = useCallback((pathId: string) => {
+    if (isReadOnly) return;
     setFeederPaths(prev => prev.map(p => {
       if (p.id !== pathId || p.points.length === 0) return p;
+      if (p.points.length >= 2) {
+        const lastPt = p.points[p.points.length - 1];
+        const prevPt = p.points[p.points.length - 2];
+        const dx = lastPt.x - prevPt.x;
+        const dy = lastPt.y - prevPt.y;
+        const len = Math.hypot(dx, dy) || 1;
+        // ยืดต่อปลายเส้นออกไป 40px ในทิศทางเดียวกับแนวเดิม
+        const extX = Math.round((dx / len) * 40);
+        const extY = Math.round((dy / len) * 40);
+        const newPoints = [...p.points, { x: lastPt.x + extX, y: lastPt.y + extY }];
+        return { ...p, points: newPoints };
+      }
       const lastPt = p.points[p.points.length - 1];
-      const newPoints = [...p.points, { x: lastPt.x + 40, y: lastPt.y }];
+      const newPoints = [...p.points, { x: lastPt.x, y: lastPt.y + 30 }];
       return { ...p, points: newPoints };
     }));
-  }, [setFeederPaths]);
+  }, [isReadOnly, setFeederPaths]);
 
   // Switch Handlers
   const handleUpdateSwitch = useCallback((updated: SwitchNode) => {
+    if (isReadOnly) return;
     setSwitches(prev => prev.map(s => (s.id === updated.id ? updated : s)));
     setSelectedSwitch(curr => (curr?.id === updated.id ? updated : curr));
-  }, [setSwitches]);
+  }, [isReadOnly, setSwitches]);
 
   const handleDeleteSwitch = useCallback((id: string) => {
+    if (isReadOnly) return;
     const target = switches.find(s => s.id === id);
     setSwitches(prev => prev.filter(s => s.id !== id));
     setSelectedSwitch(curr => (curr?.id === id ? null : curr));
     showToast(`ลบสวิตช์ ${target ? target.code : ''} เรียบร้อยแล้ว`, 'info');
-  }, [switches, setSwitches, showToast]);
+  }, [isReadOnly, switches, setSwitches, showToast]);
 
   const handleSaveSwitch = useCallback((sw: SwitchNode) => {
+    if (isReadOnly) return;
     const exists = switches.some(s => s.id === sw.id);
     if (exists) {
       setSwitches(prev => prev.map(s => (s.id === sw.id ? sw : s)));
@@ -740,9 +759,10 @@ export default function App() {
       showToast(`เพิ่มสวิตช์ ${sw.code} เรียบร้อยแล้ว`);
     }
     setSelectedSwitch(sw);
-  }, [switches, setSwitches, showToast]);
+  }, [isReadOnly, switches, setSwitches, showToast]);
 
   const handleOpenAddSwitchModal = (pos?: { x: number; y: number }) => {
+    if (isReadOnly) return;
     setEditingSwitch(null);
     setNewSwitchDefaultPos(pos || { x: 400, y: 400 });
     setIsSwitchModalOpen(true);
@@ -750,18 +770,21 @@ export default function App() {
 
   // Annotation Handlers
   const handleUpdateAnnotation = useCallback((updated: AnnotationLabel) => {
+    if (isReadOnly) return;
     setAnnotations(prev => prev.map(a => (a.id === updated.id ? updated : a)));
     setSelectedAnnotation(curr => (curr?.id === updated.id ? updated : curr));
-  }, [setAnnotations]);
+  }, [isReadOnly, setAnnotations]);
 
   const handleDeleteAnnotation = useCallback((id: string) => {
+    if (isReadOnly) return;
     const target = annotations.find(a => a.id === id);
     setAnnotations(prev => prev.filter(a => a.id !== id));
     setSelectedAnnotation(curr => (curr?.id === id ? null : curr));
     showToast(`ลบข้อความ ${target ? target.text : ''} เรียบร้อยแล้ว`, 'info');
-  }, [annotations, setAnnotations, showToast]);
+  }, [isReadOnly, annotations, setAnnotations, showToast]);
 
   const handleSaveAnnotation = useCallback((ann: AnnotationLabel) => {
+    if (isReadOnly) return;
     const exists = annotations.some(a => a.id === ann.id);
     if (exists) {
       setAnnotations(prev => prev.map(a => (a.id === ann.id ? ann : a)));
@@ -771,9 +794,10 @@ export default function App() {
       showToast(`เพิ่มข้อความ "${ann.text}" เรียบร้อยแล้ว`);
     }
     setSelectedAnnotation(ann);
-  }, [annotations, setAnnotations, showToast]);
+  }, [isReadOnly, annotations, setAnnotations, showToast]);
 
   const handleOpenAddAnnotationModal = (pos?: { x: number; y: number }) => {
+    if (isReadOnly) return;
     setEditingAnnotation(null);
     setNewAnnotationDefaultPos(pos || { x: 400, y: 400 });
     setIsAnnotationModalOpen(true);
@@ -781,6 +805,7 @@ export default function App() {
 
   // Transformer Handlers
   const handleSaveTransformer = (t: Transformer) => {
+    if (isReadOnly) return;
     const exists = transformers.some(item => item.id === t.id);
     if (exists) {
       setTransformers(prev => prev.map(item => (item.id === t.id ? t : item)));
@@ -793,6 +818,7 @@ export default function App() {
   };
 
   const handleDeleteTransformer = (id: string) => {
+    if (isReadOnly) return;
     const target = transformers.find(t => t.id === id);
     setTransformers(prev => prev.filter(t => t.id !== id));
     if (selectedTransformer?.id === id) {
@@ -802,6 +828,7 @@ export default function App() {
   };
 
   const handleDeleteMultiple = (ids: string[]) => {
+    if (isReadOnly) return;
     setTransformers(prev => prev.filter(t => !ids.includes(t.id)));
     setSelectedTransformer(null);
     showToast(`ลบหม้อแปลงจำนวน ${ids.length} รายการเรียบร้อยแล้ว`, 'info');
@@ -814,7 +841,8 @@ export default function App() {
   };
 
   const handleEditTransformer = (t: Transformer) => {
-    setEditingTransformer(t);
+    const original = transformers.find(item => item.id === t.id) || t;
+    setEditingTransformer(original);
     setIsModalOpen(true);
   };
 
@@ -845,12 +873,6 @@ export default function App() {
     })));
     setSelectedTransformer(null);
     showToast('ลบข้อมูลหม้อแปลงทั้งหมดในทุกหน้าผังเรียบร้อยแล้ว (0 ลูก)', 'info');
-  };
-
-  const handleLoadPdfSheet1 = () => {
-    if (confirm('ยืนยันการลบข้อมูลหม้อแปลงทั้งหมดออกจากทุกหน้าผังใช่หรือไม่?')) {
-      handleClearAllTransformers();
-    }
   };
 
   // Sync active sheet when URL hash or params change
@@ -909,7 +931,6 @@ export default function App() {
         onOpenEditSheetModal={handleOpenEditSheetModal}
         onDuplicateSheet={handleDuplicateSheet}
         onDeleteSheet={handleDeleteSheet}
-        onLoadPdfSheet1={handleLoadPdfSheet1}
       />
 
       {/* Main View Container */}
@@ -965,23 +986,23 @@ export default function App() {
                   setSelectedSwitch(null);
                 }
               }}
-              onUpdateTransformerPosition={handleUpdatePosition}
-              onUpdateSwitchPosition={handleUpdateSwitchPosition}
-              onUpdateAnnotationPosition={handleUpdateAnnotationPosition}
-              onUpdateFeederPath={handleUpdateFeederPath}
-              onDeleteFeederPath={handleDeleteFeederPath}
-              onAddFeederPath={handleAddFeederPath}
-              onDeleteSwitch={handleDeleteSwitch}
-              onDeleteAnnotation={handleDeleteAnnotation}
-              onEditAnnotation={(ann) => {
+              onUpdateTransformerPosition={isReadOnly ? () => {} : handleUpdatePosition}
+              onUpdateSwitchPosition={isReadOnly ? undefined : handleUpdateSwitchPosition}
+              onUpdateAnnotationPosition={isReadOnly ? undefined : handleUpdateAnnotationPosition}
+              onUpdateFeederPath={isReadOnly ? undefined : handleUpdateFeederPath}
+              onDeleteFeederPath={isReadOnly ? undefined : handleDeleteFeederPath}
+              onAddFeederPath={isReadOnly ? undefined : handleAddFeederPath}
+              onDeleteSwitch={isReadOnly ? undefined : handleDeleteSwitch}
+              onDeleteAnnotation={isReadOnly ? undefined : handleDeleteAnnotation}
+              onEditAnnotation={isReadOnly ? undefined : (ann) => {
                 setEditingAnnotation(ann);
                 setIsAnnotationModalOpen(true);
               }}
-              onAddSwitchAt={(x, y) => handleOpenAddSwitchModal({ x, y })}
-              onAddAnnotationAt={(x, y) => handleOpenAddAnnotationModal({ x, y })}
-              onEditTransformer={handleEditTransformer}
-              onDeleteTransformer={handleDeleteTransformer}
-              onAddTransformerAt={(x, y) => handleOpenAddModal({ x, y })}
+              onAddSwitchAt={isReadOnly ? undefined : (x, y) => handleOpenAddSwitchModal({ x, y })}
+              onAddAnnotationAt={isReadOnly ? undefined : (x, y) => handleOpenAddAnnotationModal({ x, y })}
+              onEditTransformer={isReadOnly ? () => {} : handleEditTransformer}
+              onDeleteTransformer={isReadOnly ? () => {} : handleDeleteTransformer}
+              onAddTransformerAt={isReadOnly ? () => {} : (x, y) => handleOpenAddModal({ x, y })}
             />
 
             {/* Selected Transformer Detail Drawer */}

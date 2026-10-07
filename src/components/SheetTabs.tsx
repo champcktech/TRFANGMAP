@@ -24,7 +24,6 @@ interface SheetTabsProps {
   onOpenEditSheetModal: (sheet: DiagramSheet) => void;
   onDuplicateSheet: (sheetId: string) => void;
   onDeleteSheet: (sheetId: string) => void;
-  onLoadPdfSheet1?: () => void;
 }
 
 export const SheetTabs: React.FC<SheetTabsProps> = ({
@@ -35,8 +34,7 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
   onOpenNewSheetModal,
   onOpenEditSheetModal,
   onDuplicateSheet,
-  onDeleteSheet,
-  onLoadPdfSheet1
+  onDeleteSheet
 }) => {
   const [menuOpenSheetId, setMenuOpenSheetId] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -217,17 +215,6 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                 <Plus className="w-3.5 h-3.5" />
                 <span>เพิ่มหน้าใหม่</span>
               </button>
-
-              {onLoadPdfSheet1 && sheets.some(s => (s.transformers?.length || 0) > 0) && (
-                <button
-                  onClick={onLoadPdfSheet1}
-                  className="px-2 py-1 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-800/60 rounded-lg font-semibold flex items-center gap-1 transition-all shrink-0 cursor-pointer text-[11px]"
-                  title="ลบข้อมูลหม้อแปลงทั้งหมดในทุกหน้าผัง"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                  <span className="hidden sm:inline">ลบหม้อแปลงทั้งหมด</span>
-                </button>
-              )}
             </div>
           )}
         </div>

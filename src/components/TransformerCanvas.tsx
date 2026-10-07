@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Transformer, SwitchNode, FeederPath, AnnotationLabel } from '../types';
 import { 
   transformDataToLandscape, 
-  transformPointToPortrait 
+  transformPointToPortrait,
+  getTransformerGeometry
 } from '../utils/orientation';
 import { getGoogleMapsNavUrl, isValidLatLng } from '../utils/geoUtils';
 import { 
@@ -178,6 +179,15 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     return { x: Math.round(x), y: Math.round(y) };
   }, [pan, zoom]);
 
+  // Automatically reset any editing/drawing mode when in read-only mode
+  useEffect(() => {
+    if (isReadOnly) {
+      setCanvasClickMode('select');
+      setDrawingPoints([]);
+      setMouseCanvasPos(null);
+    }
+  }, [isReadOnly]);
+
   // Global window listeners for butter-smooth dragging & panning + Delete key
   useEffect(() => {
     // Keyboard delete shortcut for any selected element
@@ -210,6 +220,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    isReadOnly,
     selectedPathId,
     selectedSwitchId,
     selectedAnnotationId,
@@ -557,8 +568,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     if (isReadOnly) return;
     const targetPath = feederPaths.find(p => p.id === pathId);
     if (!targetPath || !onUpdateFeederPath) return;
+    const pt = toPortraitCoords(midpoint.x, midpoint.y);
     const newPoints = [...targetPath.points];
-    newPoints.splice(afterIndex + 1, 0, midpoint);
+    newPoints.splice(afterIndex + 1, 0, pt);
     onUpdateFeederPath({ ...targetPath, points: newPoints });
   };
 
@@ -575,10 +587,12 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   // Finish drawing new line
   const handleFinishDrawing = () => {
     if (drawingPoints.length >= 2 && onAddFeederPath) {
+      // แปลงพิกัดจากหน้าจอแนวนอนกลับเป็นพิกัดจัดเก็บ (toPortraitCoords) เพื่อไม่ให้เส้นหมุน 90 องศาเป็นแนวตั้ง
+      const portraitPoints = drawingPoints.map(p => toPortraitCoords(p.x, p.y));
       const newPath: FeederPath = {
         id: `path-custom-${Date.now()}`,
         name: `สายแยกใหม่ ${feederPaths.length + 1}`,
-        points: drawingPoints,
+        points: portraitPoints,
         strokeWidth: 2.5,
         style: 'solid',
         color: '#000000'
@@ -942,7 +956,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       )}
 
       {/* Selected Switch Quick Control Banner */}
-      {selectedSwitchId && (
+      {!isReadOnly && selectedSwitchId && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 text-white backdrop-blur-md px-4 py-2 rounded-2xl shadow-2xl border border-emerald-500/80 flex items-center gap-3 animate-in fade-in slide-in-from-top-3 duration-200 text-xs">
           <Power className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>
@@ -970,7 +984,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       )}
 
       {/* Selected Annotation Quick Control Banner */}
-      {selectedAnnotationId && (
+      {!isReadOnly && selectedAnnotationId && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 text-white backdrop-blur-md px-4 py-2 rounded-2xl shadow-2xl border border-blue-500/80 flex items-center gap-3 animate-in fade-in slide-in-from-top-3 duration-200 text-xs">
           <Type className="w-4 h-4 text-blue-400 shrink-0" />
           <span>
@@ -998,7 +1012,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       )}
 
       {/* Drawing Line Interactive Floating Banner */}
-      {canvasClickMode === 'draw_line' && (
+      {!isReadOnly && canvasClickMode === 'draw_line' && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-purple-900/90 text-white backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-2xl border border-purple-500 flex items-center gap-3 animate-in fade-in slide-in-from-top-3 duration-200">
           <PenTool className="w-4 h-4 text-purple-300 shrink-0" />
           <div className="text-xs">
@@ -1030,7 +1044,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       )}
 
       {/* Line Edit Mode Info Banner & Floating Selection Control */}
-      {(canvasClickMode === 'edit_line' || selectedPathId) && (
+      {!isReadOnly && (canvasClickMode === 'edit_line' || selectedPathId) && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 text-white backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-2xl border border-indigo-500/80 flex items-center gap-3 animate-in fade-in slide-in-from-top-3 duration-200 text-xs">
           <GitCommit className="w-4 h-4 text-indigo-400 shrink-0" />
           <span>
@@ -1180,7 +1194,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           {displayData.feederPaths.map(path => {
             const isSelected = selectedPathId === path.id;
             const isHovered = hoveredPathId === path.id;
-            const isLineEditing = canvasClickMode === 'edit_line' || isSelected;
+            const isLineEditing = !isReadOnly && (canvasClickMode === 'edit_line' || isSelected);
             const pointsStr = path.points.map(p => `${p.x},${p.y}`).join(' ');
             const lineColor = path.color || themeStyles.wire;
 
@@ -1201,7 +1215,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     e.stopPropagation();
                     onSelectTransformer(null);
                     onSelectPath?.(path);
-                    if (canvasClickMode !== 'draw_line') {
+                    if (!isReadOnly && canvasClickMode !== 'draw_line') {
                       setCanvasClickMode('edit_line');
                     }
                   }}
@@ -1235,7 +1249,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     e.stopPropagation();
                     onSelectTransformer(null);
                     onSelectPath?.(path);
-                    if (canvasClickMode !== 'draw_line') {
+                    if (!isReadOnly && canvasClickMode !== 'draw_line') {
                       setCanvasClickMode('edit_line');
                     }
                   }}
@@ -1419,7 +1433,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
-                  onEditAnnotation?.(label);
+                  if (isReadOnly) return;
+                  const original = annotations.find(orig => orig.id === label.id) || label;
+                  onEditAnnotation?.(original);
                 }}
                 onMouseDown={(e) => startDrag('annotation', label.id, label.x, label.y, e)}
               >
@@ -1497,6 +1513,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       fontSize={label.fontSize || 17}
                       fontWeight="bold"
                       fill={label.color || '#000000'}
+                      style={{ fill: label.color || '#000000' }}
                     >
                       (1) ผังหม้อแปลง
                     </text>
@@ -1507,6 +1524,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       fontSize={label.fontSize || 17}
                       fontWeight="bold"
                       fill={label.color || '#000000'}
+                      style={{ fill: label.color || '#000000' }}
                     >
                       {label.text.replace('(1) ผังหม้อแปลง ', '').trim() || 'ไลน์สวนดอก'}
                     </text>
@@ -1523,6 +1541,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                         textAnchor="middle"
                         dominantBaseline="hanging"
                         style={{
+                          fill: label.color || '#1d4ed8',
                           writingMode: 'vertical-rl',
                           textOrientation: 'upright',
                           letterSpacing: '2px'
@@ -1539,6 +1558,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                         fontWeight="bold"
                         textAnchor="middle"
                         dominantBaseline="middle"
+                        style={{
+                          fill: label.color || '#1d4ed8'
+                        }}
                       >
                         {label.text}
                       </text>
@@ -1553,6 +1575,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     fontWeight="bold"
                     textAnchor="middle"
                     dominantBaseline="middle"
+                    style={{
+                      fill: label.color || '#2563eb'
+                    }}
                   >
                     {label.text}
                   </text>
@@ -1727,35 +1752,61 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             const triFill = isPrivate ? themeStyles.privateFill : themeStyles.publicFill;
             const triStroke = isPrivate ? themeStyles.privateStroke : themeStyles.publicStroke;
 
-            // Connection branch line from node to feeder
-            let triPoints = "0,-14 12,10 -12,10"; // pointing up default
-            let textAnchor: "start" | "middle" | "end" = "middle";
-            let textX = 0;
-            let textY = -22;
+            const orientation = t.orientation || 'top';
+            const textPos = t.textPosition || 'auto';
 
-            if (t.orientation === 'left') {
-              triPoints = "-14,0 10,-12 10,12";
-              textAnchor = "end";
-              textX = -20;
-              textY = -10;
-            } else if (t.orientation === 'right') {
-              triPoints = "14,0 -10,-12 -10,12";
-              textAnchor = "start";
-              textX = 20;
-              textY = -10;
-            } else if (t.orientation === 'top') {
-              triPoints = "0,-14 12,10 -12,10";
-              textAnchor = "middle";
-              textX = 0;
-              textY = -22;
-            } else if (t.orientation === 'bottom') {
-              triPoints = "0,14 12,-10 -12,-10";
-              textAnchor = "middle";
-              textX = 0;
-              textY = 26;
+            // Symbol geometry: Triangle and stem line matching orientation & chosen stem direction (4 directions or none)
+            const { triPoints, stemLine, effStemDir } = getTransformerGeometry(orientation, t.stemDirection);
+
+            // Text Positioning: Smart non-overlapping coordinates
+            let effectivePos: 'right' | 'left' | 'top' | 'bottom' = 'right';
+            if (textPos === 'auto') {
+              // In SLD, side placement for nodes guarantees zero clash with stem line or triangle apex
+              effectivePos = 'right';
+            } else {
+              effectivePos = textPos;
             }
 
+            let textAnchor: "start" | "middle" | "end" = "start";
+            let textX = 24;
+            let textY = -12;
+
+            if (effectivePos === 'right') {
+              textAnchor = "start";
+              textX = effStemDir === 'right' ? 32 : (orientation === 'right' ? 28 : 24);
+              textY = -12;
+            } else if (effectivePos === 'left') {
+              textAnchor = "end";
+              textX = effStemDir === 'left' ? -32 : (orientation === 'left' ? -28 : -24);
+              textY = -12;
+            } else if (effectivePos === 'top') {
+              textAnchor = "middle";
+              textX = 0;
+              textY = effStemDir === 'top' ? -56 : (orientation === 'top' ? -52 : -44);
+            } else if (effectivePos === 'bottom') {
+              textAnchor = "middle";
+              textX = 0;
+              textY = effStemDir === 'bottom' ? 40 : (orientation === 'bottom' ? 36 : 30);
+            }
+
+            // Compute background badge dimensions to ensure text never clashes with symbols or wires
+            const nameLen = (t.name || '').length;
+            const peaLen = (t.peaNo || '').length;
+            const kvaLen = `${t.kva} kVA`.length;
+            const maxChars = Math.max(nameLen, peaLen, kvaLen, 6);
+            const badgeW = Math.max(76, maxChars * 8.5 + 24);
+            const badgeH = 50;
+
+            let badgeX = -badgeW / 2;
+            if (textAnchor === 'start') {
+              badgeX = -6;
+            } else if (textAnchor === 'end') {
+              badgeX = -badgeW + 6;
+            }
+            const badgeY = -12;
+
             const isBeingDragged = draggingItem?.type === 'transformer' && draggingItem.id === t.id;
+            const quickActionY = effectivePos === 'bottom' ? textY + 44 : (effStemDir === 'bottom' ? 42 : 36);
 
             return (
               <g
@@ -1769,11 +1820,14 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   if (dragMovedRef.current) return;
-                  onSelectTransformer(t);
+                  const original = transformers.find(orig => orig.id === t.id) || t;
+                  onSelectTransformer(original);
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
-                  onEditTransformer(t);
+                  if (isReadOnly) return;
+                  const original = transformers.find(orig => orig.id === t.id) || t;
+                  onEditTransformer(original);
                 }}
                 onMouseEnter={() => setHoveredTransformer(t)}
                 onMouseLeave={() => setHoveredTransformer(null)}
@@ -1834,6 +1888,19 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   />
                 )}
 
+                {/* Connection Stem Line matching chosen stem direction */}
+                {stemLine && (
+                  <line
+                    x1={stemLine.x1}
+                    y1={stemLine.y1}
+                    x2={stemLine.x2}
+                    y2={stemLine.y2}
+                    stroke={triStroke}
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  />
+                )}
+
                 {/* Transformer Triangle (Equilateral Symbol) */}
                 <polygon
                   points={triPoints}
@@ -1847,7 +1914,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 {/* Phase / AC symbol if present */}
                 {t.phase === 'AC' && (
                   <text
-                    x={t.orientation === 'left' ? 16 : -16}
+                    x={orientation === 'left' ? 16 : -16}
                     y="4"
                     fontSize="10"
                     fontWeight="bold"
@@ -1858,30 +1925,55 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   </text>
                 )}
 
-                {/* Text Metadata Block (kVA, PEA No., Name) */}
+                {/* Text Metadata Block (kVA, PEA No., Name) with protective background badge & halo */}
                 <g transform={`translate(${textX}, ${textY})`}>
-                  {/* kVA Rating */}
+                  {/* Background plate to ensure text never clashes with symbols or wires */}
+                  <rect
+                    x={badgeX}
+                    y={badgeY}
+                    width={badgeW}
+                    height={badgeH}
+                    rx="6"
+                    fill={themeStyles.canvasPaper}
+                    fillOpacity="0.98"
+                    stroke={themeStyles.border}
+                    strokeWidth="1"
+                  />
+
+                  {/* kVA Rating with unit & color */}
                   <text
                     x="0"
-                    y="0"
+                    y="3"
                     textAnchor={textAnchor}
-                    fontSize="13"
-                    fontWeight="bold"
+                    fontSize="12"
+                    fontWeight="800"
                     fontFamily="sans-serif"
-                    fill={themeStyles.textPrimary}
+                    fill={isPrivate ? '#9333ea' : '#2563eb'}
+                    style={{
+                      paintOrder: 'stroke fill',
+                      stroke: themeStyles.canvasPaper,
+                      strokeWidth: '2px',
+                      strokeLinejoin: 'round'
+                    }}
                   >
-                    {t.kva}
+                    {t.kva} kVA
                   </text>
 
                   {/* PEA Number */}
                   <text
                     x="0"
-                    y="13"
+                    y="17"
                     textAnchor={textAnchor}
                     fontSize="11"
                     fontFamily="monospace"
-                    fontWeight="600"
+                    fontWeight="700"
                     fill={themeStyles.textSecondary}
+                    style={{
+                      paintOrder: 'stroke fill',
+                      stroke: themeStyles.canvasPaper,
+                      strokeWidth: '2px',
+                      strokeLinejoin: 'round'
+                    }}
                   >
                     {t.peaNo}
                   </text>
@@ -1889,12 +1981,18 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   {/* Location / Consumer Name */}
                   <text
                     x="0"
-                    y="25"
+                    y="31"
                     textAnchor={textAnchor}
                     fontSize="11"
                     fontFamily="sans-serif"
                     fill={themeStyles.textPrimary}
-                    fontWeight="500"
+                    fontWeight="700"
+                    style={{
+                      paintOrder: 'stroke fill',
+                      stroke: themeStyles.canvasPaper,
+                      strokeWidth: '2px',
+                      strokeLinejoin: 'round'
+                    }}
                   >
                     {t.name}
                   </text>
@@ -1902,13 +2000,13 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
                 {/* Quick actions popup when selected */}
                 {isSelected && (
-                  <g transform="translate(0, 36)" className="pointer-events-auto">
+                  <g transform={`translate(0, ${quickActionY})`} className="pointer-events-auto">
                     {isValidLatLng(t.latitude, t.longitude) ? (
                       <>
                         <rect
-                          x="-64"
+                          x={isReadOnly ? "-36" : "-64"}
                           y="-12"
-                          width="128"
+                          width={isReadOnly ? "72" : "128"}
                           height="24"
                           rx="12"
                           fill="#0f172a"
@@ -1917,11 +2015,12 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                           strokeWidth="1"
                         />
                         <text
-                          x="-40"
+                          x={isReadOnly ? "0" : "-40"}
                           y="4"
                           fill="#60a5fa"
                           fontSize="10"
                           fontWeight="bold"
+                          textAnchor={isReadOnly ? "middle" : "start"}
                           className="cursor-pointer hover:underline"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1930,75 +2029,82 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                         >
                           📍นำทาง
                         </text>
-                        <text
-                          x="0"
-                          y="4"
-                          fill="#ffffff"
-                          fontSize="10"
-                          fontWeight="bold"
-                          className="cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEditTransformer(t);
-                          }}
-                        >
-                          แก้ไข
-                        </text>
-                        <text
-                          x="38"
-                          y="4"
-                          fill="#f87171"
-                          fontSize="10"
-                          fontWeight="bold"
-                          className="cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteTransformer(t.id);
-                          }}
-                        >
-                          ลบ
-                        </text>
+                        {!isReadOnly && (
+                          <>
+                            <text
+                              x="0"
+                              y="4"
+                              fill="#ffffff"
+                              fontSize="10"
+                              fontWeight="bold"
+                              className="cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const original = transformers.find(orig => orig.id === t.id) || t;
+                                onEditTransformer(original);
+                              }}
+                            >
+                              แก้ไข
+                            </text>
+                            <text
+                              x="38"
+                              y="4"
+                              fill="#f87171"
+                              fontSize="10"
+                              fontWeight="bold"
+                              className="cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteTransformer(t.id);
+                              }}
+                            >
+                              ลบ
+                            </text>
+                          </>
+                        )}
                       </>
                     ) : (
-                      <>
-                        <rect
-                          x="-38"
-                          y="-12"
-                          width="76"
-                          height="24"
-                          rx="12"
-                          fill="#0f172a"
-                          fillOpacity="0.9"
-                        />
-                        <text
-                          x="-18"
-                          y="4"
-                          fill="#ffffff"
-                          fontSize="10"
-                          fontWeight="bold"
-                          className="cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEditTransformer(t);
-                          }}
-                        >
-                          แก้ไข
-                        </text>
-                        <text
-                          x="14"
-                          y="4"
-                          fill="#f87171"
-                          fontSize="10"
-                          fontWeight="bold"
-                          className="cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteTransformer(t.id);
-                          }}
-                        >
-                          ลบ
-                        </text>
-                      </>
+                      !isReadOnly && (
+                        <>
+                          <rect
+                            x="-38"
+                            y="-12"
+                            width="76"
+                            height="24"
+                            rx="12"
+                            fill="#0f172a"
+                            fillOpacity="0.9"
+                          />
+                          <text
+                            x="-18"
+                            y="4"
+                            fill="#ffffff"
+                            fontSize="10"
+                            fontWeight="bold"
+                            className="cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditTransformer(t);
+                            }}
+                          >
+                            แก้ไข
+                          </text>
+                          <text
+                            x="14"
+                            y="4"
+                            fill="#f87171"
+                            fontSize="10"
+                            fontWeight="bold"
+                            className="cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteTransformer(t.id);
+                            }}
+                          >
+                            ลบ
+                          </text>
+                        </>
+                      )
                     )}
                   </g>
                 )}

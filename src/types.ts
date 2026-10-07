@@ -13,6 +13,8 @@ export interface Transformer {
   x: number; // canvas coordinate X
   y: number; // canvas coordinate Y
   orientation?: 'left' | 'right' | 'top' | 'bottom'; // ทิศทางของสัญลักษณ์หม้อแปลง
+  stemDirection?: 'top' | 'bottom' | 'left' | 'right' | 'none'; // ทิศทางของเส้นที่ออกมาจากสัญลักษณ์หม้อแปลง (4 ทิศ: บน, ล่าง, ซ้าย, ขวา หรือไม่มีเส้น)
+  textPosition?: 'auto' | 'right' | 'left' | 'top' | 'bottom'; // ตำแหน่งข้อความ (ขวา, ซ้าย, บน, ล่าง)
   notes?: string;
   poleNo?: string; // เลขเสา (ถ้ามี)
   latitude?: number; // พิกัดละติจูด (Lat) เช่น 19.917456
