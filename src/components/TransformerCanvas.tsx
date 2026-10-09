@@ -31,7 +31,8 @@ import {
   MousePointer,
   ChevronDown,
   Power,
-  Type
+  Type,
+  GripVertical
 } from 'lucide-react';
 
 interface TransformerCanvasProps {
@@ -148,6 +149,107 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   const canvasSizeMode: 'a4_landscape' = 'a4_landscape'; // ล็อคขนาดเท่า A4 แนวนอนเป็นมาตรฐาน
   const [symbolScale, setSymbolScale] = useState<number>(0.85); // 0.85 default (ขนาดสัญลักษณ์กะทัดรัดลง)
   const canvasOrientation: 'landscape' = 'landscape'; // แนวนอนเป็นมาตรฐานถาวรตามความต้องการของผู้ใช้
+
+  // Draggable floating toolbar state
+  const canvasRootRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number }>(() => {
+    try {
+      const saved = localStorage.getItem('canvas_floating_toolbar_pos');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+          return { x: parsed.x, y: parsed.y };
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return { x: 8, y: 8 };
+  });
+  const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
+  const toolbarDragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
+
+  const handleToolbarPointerDown = useCallback((e: React.PointerEvent) => {
+    // Only primary button
+    if (e.button !== 0) return;
+    // Don't drag if clicking buttons, links, or inputs
+    const target = e.target as HTMLElement;
+    if (target.closest('button, input, select, [role="button"], a')) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    toolbarDragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initX: toolbarPos.x,
+      initY: toolbarPos.y
+    };
+    setIsDraggingToolbar(true);
+
+    const onPointerMove = (ev: PointerEvent) => {
+      if (!toolbarDragStartRef.current) return;
+      const dx = ev.clientX - toolbarDragStartRef.current.startX;
+      const dy = ev.clientY - toolbarDragStartRef.current.startY;
+      let nextX = toolbarDragStartRef.current.initX + dx;
+      let nextY = toolbarDragStartRef.current.initY + dy;
+
+      if (canvasRootRef.current && toolbarRef.current) {
+        const rootRect = canvasRootRef.current.getBoundingClientRect();
+        const tbRect = toolbarRef.current.getBoundingClientRect();
+        const maxX = Math.max(8, rootRect.width - tbRect.width - 8);
+        const maxY = Math.max(8, rootRect.height - tbRect.height - 8);
+        nextX = Math.max(8, Math.min(nextX, maxX));
+        nextY = Math.max(8, Math.min(nextY, maxY));
+      }
+
+      setToolbarPos({ x: nextX, y: nextY });
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      setIsDraggingToolbar(false);
+      toolbarDragStartRef.current = null;
+
+      setToolbarPos(current => {
+        try {
+          localStorage.setItem('canvas_floating_toolbar_pos', JSON.stringify(current));
+        } catch {}
+        return current;
+      });
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  }, [toolbarPos]);
+
+  // Adjust toolbar position if window resized beyond bounds
+  useEffect(() => {
+    const handleResize = () => {
+      if (canvasRootRef.current && toolbarRef.current) {
+        const rootRect = canvasRootRef.current.getBoundingClientRect();
+        const tbRect = toolbarRef.current.getBoundingClientRect();
+        const maxX = Math.max(8, rootRect.width - tbRect.width - 8);
+        const maxY = Math.max(8, rootRect.height - tbRect.height - 8);
+        setToolbarPos(prev => {
+          const clampedX = Math.max(8, Math.min(prev.x, maxX));
+          const clampedY = Math.max(8, Math.min(prev.y, maxY));
+          if (clampedX !== prev.x || clampedY !== prev.y) {
+            return { x: clampedX, y: clampedY };
+          }
+          return prev;
+        });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // ข้อมูลที่แสดงผลบน Canvas ตามมุมมอง (แนวตั้งตาม PDF หรือ แนวนอน)
   const displayData = useMemo(() => {
@@ -680,9 +782,33 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   }[theme];
 
   return (
-    <div className="relative w-full h-full flex flex-col select-none overflow-hidden bg-slate-100 dark:bg-slate-900">
-      {/* Floating Canvas Toolbar */}
-      <div className="absolute top-2 left-2 z-20 flex flex-wrap items-center gap-1.5 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-2 py-1 rounded-lg shadow-md border border-slate-200 dark:border-slate-700">
+    <div ref={canvasRootRef} className="relative w-full h-full flex flex-col select-none overflow-hidden bg-slate-100 dark:bg-slate-900">
+      {/* Floating Canvas Toolbar (Draggable) */}
+      <div 
+        ref={toolbarRef}
+        style={{ left: `${toolbarPos.x}px`, top: `${toolbarPos.y}px` }}
+        onPointerDown={handleToolbarPointerDown}
+        className={`absolute z-30 flex flex-wrap items-center gap-1.5 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-1.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 select-none transition-shadow ${
+          isDraggingToolbar 
+            ? 'shadow-2xl ring-2 ring-blue-500/50 cursor-grabbing' 
+            : 'shadow-md hover:shadow-lg'
+        }`}
+      >
+        {/* Drag Handle Indicator */}
+        <div
+          className="flex items-center justify-center p-1 rounded cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors"
+          title="คลิกลากเพื่อย้ายตำแหน่งแท็บเครื่องมือ (ดับเบิ้ลคลิกเพื่อรีเซ็ตกลับมุมซ้ายบน)"
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            setToolbarPos({ x: 8, y: 8 });
+            try {
+              localStorage.setItem('canvas_floating_toolbar_pos', JSON.stringify({ x: 8, y: 8 }));
+            } catch {}
+          }}
+        >
+          <GripVertical className="w-3.5 h-3.5" />
+        </div>
+
         <div className="flex items-center gap-0.5 border-r border-slate-200 dark:border-slate-700 pr-1.5">
           <button
             id="btn-zoom-in"
