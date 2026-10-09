@@ -75,19 +75,11 @@ export const PrintModal: React.FC<PrintModalProps> = ({
     });
   });
 
-  if (!isFinite(minX) || !isFinite(maxX)) {
-    minX = 0;
-    maxX = 1950;
-    minY = 0;
-    maxY = 850;
-  }
-
-  // เผื่อขอบรอบข้างเล็กน้อย (Padding) เพื่อให้ภาพพอดีเต็มหน้ากระดาษ
-  const contentPadding = 30;
-  const viewBoxX = Math.max(0, Math.floor(minX - contentPadding));
-  const viewBoxY = Math.max(0, Math.floor(minY - contentPadding));
-  const viewBoxWidth = Math.ceil((maxX - minX) + contentPadding * 2);
-  const viewBoxHeight = Math.ceil((maxY - minY) + contentPadding * 2);
+  // ขนาดแผ่นผังมาตรฐาน A4 แนวนอน (2079 × 1470 px = 297 × 210 mm ที่อัตราส่วน 1:√2 มาตรฐาน ISO 216)
+  const viewBoxX = 0;
+  const viewBoxY = 0;
+  const viewBoxWidth = 2079;
+  const viewBoxHeight = 1470;
 
   // ฟังก์ชันเตรียม SVG Clone สำหรับพิมพ์และส่งออก (ล้าง Pan/Zoom Transform ออก)
   const prepareCleanSvgClone = (isDark: boolean): SVGElement | null => {

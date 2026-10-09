@@ -310,19 +310,17 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     handleFitToScreen();
   };
 
-  // ขนาดแผ่นผังมาตรฐาน A4 Landscape (1414 x 1000 px ตามอัตราส่วนมาตรฐาน 1.414 ของกระดาษ A4)
-  // หรือปรับเป็น Landscape Wide (2000 x 950 px) เพื่อให้บรรจุสายป้อนและหม้อแปลง 53 ลูกได้กว้างขวางสมบูรณ์
+  // ขนาดแผ่นผังมาตรฐาน A4 Landscape เป๊ะ (2079 x 1470 px = 297 x 210 มม. ที่อัตราส่วน 1:√2 = 1.4142857 มาตรฐาน ISO 216)
   const canvasBounds = useMemo(() => {
     if (canvasSizeMode === 'a4_landscape') {
-      // ขนาด A4 แนวนอนแบบมาตรฐานคงที่ (ล็อคขนาดตายตัว ไม่ขยับตามการลากย้าย)
-      // อัตราส่วน 1414 x 1000 หรือ 1980 x 1000 px
+      // ขนาด A4 แนวนอนตามอัตราส่วน 297:210 เป๊ะ (7 px ต่อ 1 มม.)
       return {
         minX: 0,
         minY: 0,
-        maxX: 2000,
-        maxY: 950,
-        width: 2000,
-        height: 950
+        maxX: 2079,
+        maxY: 1470,
+        width: 2079,
+        height: 1470
       };
     }
 
@@ -344,7 +342,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     let maxY = -Infinity;
 
     if (displayData.transformers.length === 0 && displayData.switches.length === 0 && displayData.feederPaths.length === 0) {
-      return { minX: 0, minY: 0, maxX: 2000, maxY: 950, width: 2000, height: 950 };
+      return { minX: 0, minY: 0, maxX: 2079, maxY: 1470, width: 2079, height: 1470 };
     }
 
     displayData.transformers.forEach(t => {
@@ -383,8 +381,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
     const paddingRight = 120;
     const paddingBottom = 100;
-    const minW = canvasOrientation === 'landscape' ? 2000 : 1050;
-    const minH = canvasOrientation === 'landscape' ? 950 : 1200;
+    const minW = canvasOrientation === 'landscape' ? 2079 : 1050;
+    const minH = canvasOrientation === 'landscape' ? 1470 : 1200;
 
     const width = Math.max(minW, Math.ceil((maxX + paddingRight) / 50) * 50);
     const height = Math.max(minH, Math.ceil((maxY + paddingBottom) / 50) * 50);
@@ -904,11 +902,11 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
           {/* Canvas Sheet Dimensions Indicator */}
           <div 
-            title={`ขนาดแผ่นผังเขียนแบบ: ${canvasBounds.width} × ${canvasBounds.height} พิกเซล`}
+            title={`ขนาดแผ่นผังเขียนแบบ: ${canvasBounds.width} × ${canvasBounds.height} พิกเซล (มาตราส่วน A4 แนวนอน 297 × 210 มม. เป๊ะ)`}
             className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 text-[11px] font-mono border border-slate-200 dark:border-slate-600"
           >
-            <span className="text-slate-400 font-sans">ขนาดผัง:</span>
-            <span className="font-semibold text-slate-800 dark:text-slate-100">{canvasBounds.width} × {canvasBounds.height} px</span>
+            <span className="text-slate-400 font-sans">ขนาดกระดาษ:</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-100">A4 แนวนอน ({canvasBounds.width} × {canvasBounds.height} px)</span>
           </div>
         </div>
       </div>
@@ -1164,30 +1162,60 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             )}
 
             {/* Clean Thin Single Frame (เส้นกรอบบาง เรียบ ชัดเจน) */}
+            {/* Clean Thin Single Frame (เส้นกรอบแผ่นผัง A4 มาตรฐาน) */}
             <rect
-              x="8"
-              y="8"
-              width={canvasBounds.width - 16}
-              height={canvasBounds.height - 16}
+              x="12"
+              y="12"
+              width={canvasBounds.width - 24}
+              height={canvasBounds.height - 24}
               fill="none"
               stroke={themeStyles.frameBorder}
               strokeWidth="1.5"
-              opacity="0.75"
+              opacity="0.8"
             />
 
             {/* A4 Landscape Size Tag Indicator at top-right of sheet frame */}
-            <g transform={`translate(${canvasBounds.width - 130}, 16)`} opacity="0.6">
-              <rect x="0" y="0" width="114" height="20" rx="4" fill={themeStyles.cardBg} stroke={themeStyles.border} strokeWidth="1" />
-              <text x="57" y="14" fill={themeStyles.textSecondary} fontSize="10" fontFamily="sans-serif" fontWeight="bold" textAnchor="middle">
-                {canvasSizeMode === 'a4_landscape' ? 'A4 LANDSCAPE (LOCKED)' : `${canvasBounds.width} × ${canvasBounds.height} px`}
+            <g transform={`translate(${canvasBounds.width - 245}, 20)`} opacity="0.85">
+              <rect x="0" y="0" width="225" height="26" rx="5" fill={themeStyles.cardBg} stroke={themeStyles.border} strokeWidth="1" />
+              <text x="112" y="17" fill={themeStyles.textSecondary} fontSize="11" fontFamily="sans-serif" fontWeight="bold" textAnchor="middle">
+                ขนาดกระดาษ A4 แนวนอน (297 × 210 mm)
               </text>
             </g>
 
-            {/* 4 Corner Marks (มุมบอกขอบเขตผัง) */}
-            <path d="M 8 20 L 8 8 L 20 8" fill="none" stroke={themeStyles.cornerMark} strokeWidth="1.5" />
-            <path d={`M ${canvasBounds.width - 20} 8 L ${canvasBounds.width - 8} 8 L ${canvasBounds.width - 8} 20`} fill="none" stroke={themeStyles.cornerMark} strokeWidth="1.5" />
-            <path d={`M 8 ${canvasBounds.height - 20} L 8 ${canvasBounds.height - 8} L 20 ${canvasBounds.height - 8}`} fill="none" stroke={themeStyles.cornerMark} strokeWidth="1.5" />
-            <path d={`M ${canvasBounds.width - 20} ${canvasBounds.height - 8} L ${canvasBounds.width - 8} ${canvasBounds.height - 8} L ${canvasBounds.width - 8} ${canvasBounds.height - 20}`} fill="none" stroke={themeStyles.cornerMark} strokeWidth="1.5" />
+            {/* 4 Corner Marks (มุมบอกขอบเขตผัง A4) */}
+            <path d="M 12 32 L 12 12 L 32 12" fill="none" stroke={themeStyles.cornerMark} strokeWidth="2" />
+            <path d={`M ${canvasBounds.width - 32} 12 L ${canvasBounds.width - 12} 12 L ${canvasBounds.width - 12} 32`} fill="none" stroke={themeStyles.cornerMark} strokeWidth="2" />
+            <path d={`M 12 ${canvasBounds.height - 32} L 12 ${canvasBounds.height - 12} L 32 ${canvasBounds.height - 12}`} fill="none" stroke={themeStyles.cornerMark} strokeWidth="2" />
+            <path d={`M ${canvasBounds.width - 32} ${canvasBounds.height - 12} L ${canvasBounds.width - 12} ${canvasBounds.height - 12} L ${canvasBounds.width - 12} ${canvasBounds.height - 32}`} fill="none" stroke={themeStyles.cornerMark} strokeWidth="2" />
+
+            {/* PEA Drawing Sheet Title Block at bottom-right corner (ตารางระบุข้อมูลผังมาตรฐาน A4) */}
+            <g transform={`translate(${canvasBounds.width - 365}, ${canvasBounds.height - 110})`} opacity="0.9">
+              <rect x="0" y="0" width="345" height="92" rx="4" fill={themeStyles.cardBg} stroke={themeStyles.frameBorder} strokeWidth="1.2" />
+              <line x1="0" y1="30" x2="345" y2="30" stroke={themeStyles.border} strokeWidth="1" />
+              <line x1="0" y1="62" x2="345" y2="62" stroke={themeStyles.border} strokeWidth="1" />
+              <line x1="172" y1="30" x2="172" y2="92" stroke={themeStyles.border} strokeWidth="1" />
+              
+              {/* Header */}
+              <text x="172" y="20" fill={themeStyles.textPrimary} fontSize="11" fontFamily="sans-serif" fontWeight="bold" textAnchor="middle">
+                การไฟฟ้าส่วนภูมิภาค (PEA) • ผังระบบจำหน่าย (SLD)
+              </text>
+              
+              {/* Row 1 */}
+              <text x="12" y="47" fill={themeStyles.textSecondary} fontSize="9.5" fontFamily="sans-serif">
+                ขนาดกระดาษ: <tspan fill={themeStyles.textPrimary} fontWeight="bold">A4 (297×210 mm)</tspan>
+              </text>
+              <text x="182" y="47" fill={themeStyles.textSecondary} fontSize="9.5" fontFamily="sans-serif">
+                มาตราส่วน: <tspan fill={themeStyles.textPrimary} fontWeight="bold">1:√2 (ISO 216)</tspan>
+              </text>
+              
+              {/* Row 2 */}
+              <text x="12" y="79" fill={themeStyles.textSecondary} fontSize="9.5" fontFamily="sans-serif">
+                หม้อแปลง: <tspan fill={themeStyles.textPrimary} fontWeight="bold">{displayData.transformers.length} ลูก</tspan>
+              </text>
+              <text x="182" y="79" fill={themeStyles.textSecondary} fontSize="9.5" fontFamily="sans-serif">
+                พิกัดผัง: <tspan fill={themeStyles.textPrimary} fontWeight="bold">2079 × 1470 px</tspan>
+              </text>
+            </g>
           </g>
 
           {/* Feeder Path Lines Layer with Interactive Controls */}

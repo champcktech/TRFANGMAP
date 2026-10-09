@@ -9,7 +9,7 @@ export type DiagramOrientation = 'landscape' | 'portrait';
  */
 export function transformPointToLandscape(x: number, y: number): { x: number; y: number } {
   const newX = Math.round((y - 80) * 1.95 + 100);
-  const newY = Math.round(420 + (x - 520) * 0.85);
+  const newY = Math.round(680 + (x - 520) * 0.85);
   return { x: newX, y: newY };
 }
 
@@ -18,7 +18,7 @@ export function transformPointToLandscape(x: number, y: number): { x: number; y:
  */
 export function transformPointToPortrait(x: number, y: number): { x: number; y: number } {
   const newY = Math.round((x - 100) / 1.95 + 80);
-  const newX = Math.round(520 + (y - 420) / 0.85);
+  const newX = Math.round(520 + (y - 680) / 0.85);
   return { x: newX, y: newY };
 }
 
