@@ -17,7 +17,9 @@ import {
   ChevronDown,
   Layers,
   ExternalLink,
-  Database
+  Database,
+  LogOut,
+  LogIn
 } from 'lucide-react';
 import { GoogleSheetConfig, DiagramSheet } from '../types';
 
@@ -35,6 +37,13 @@ interface NavbarProps {
   activeSheetId?: string;
   sheets?: DiagramSheet[];
   totalSheets?: number;
+  currentUser?: {
+    uid: string;
+    email?: string | null;
+    displayName?: string | null;
+  } | null;
+  onSignIn?: () => void;
+  onSignOut?: () => void;
   onSelectView: (view: 'canvas' | 'table' | 'stats') => void;
   onSelectSheet?: (sheetId: string) => void;
   onSearchChange: (query: string) => void;
@@ -61,6 +70,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeSheetId,
   sheets = [],
   totalSheets = 1,
+  currentUser,
+  onSignIn,
+  onSignOut,
   onSelectView,
   onSelectSheet,
   onSearchChange,
@@ -263,16 +275,37 @@ export const Navbar: React.FC<NavbarProps> = ({
           <Printer className="w-3.5 h-3.5" />
         </button>
 
-        {/* Add Transformer Button (Editor mode only - hidden in view mode) */}
-        {!isReadOnly && (
+        {/* Login Button when not authenticated */}
+        {!currentUser && onSignIn && (
           <button
-            id="btn-add-transformer"
-            onClick={onOpenAddModal}
-            className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+            onClick={onSignIn}
+            title="เข้าสู่ระบบสำหรับเจ้าหน้าที่ เพื่อแก้ไขผังวงจรและบันทึกข้อมูล"
+            className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white shadow-xs cursor-pointer active:scale-95"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>เพิ่มหม้อแปลง</span>
+            <LogIn className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">เข้าสู่ระบบเพื่อแก้ไข</span>
+            <span className="sm:hidden">เข้าสู่ระบบ</span>
           </button>
+        )}
+
+        {/* User Profile & Sign Out Button */}
+        {currentUser && (
+          <div className="relative group">
+            <button
+              id="btn-user-profile"
+              onClick={onSignOut}
+              title={`เข้าสู่ระบบโดย: ${currentUser.email || currentUser.displayName || 'ผู้ใช้งาน'} (คลิกเพื่อออกจากระบบ)`}
+              className="px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all bg-slate-100 hover:bg-red-50 dark:bg-slate-800 dark:hover:bg-red-950/40 text-slate-700 hover:text-red-600 dark:text-slate-200 dark:hover:text-red-400 border border-slate-200 dark:border-slate-700/80 hover:border-red-300 dark:hover:border-red-800 cursor-pointer"
+            >
+              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                {(currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase()}
+              </div>
+              <span className="hidden xl:inline max-w-[120px] truncate text-[11px]">
+                {currentUser.displayName || currentUser.email?.split('@')[0] || 'ผู้ใช้งาน'}
+              </span>
+              <LogOut className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-500 transition-colors shrink-0" />
+            </button>
+          </div>
         )}
       </div>
     </header>

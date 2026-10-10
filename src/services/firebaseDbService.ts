@@ -12,7 +12,15 @@ import {
   serverTimestamp,
   Unsubscribe
 } from 'firebase/firestore';
-import { signInWithPopup, signOut } from 'firebase/auth';
+import { 
+  signInWithPopup, 
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInAnonymously,
+  updateProfile,
+  sendPasswordResetEmail
+} from 'firebase/auth';
 import { db, auth, googleProvider, handleFirestoreError, OperationType } from '../firebase';
 import { DiagramSheet, Transformer, SwitchNode, FeederPath, AnnotationLabel } from '../types';
 
@@ -21,6 +29,28 @@ export const SHARED_WORKSPACE_ID = 'pea-fang-shared';
 export async function signInWithGoogle() {
   const result = await signInWithPopup(auth, googleProvider);
   return result.user;
+}
+
+export async function signInWithEmail(email: string, pass: string) {
+  const result = await signInWithEmailAndPassword(auth, email.trim(), pass);
+  return result.user;
+}
+
+export async function registerWithEmail(email: string, pass: string, displayName?: string) {
+  const result = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+  if (displayName?.trim() && result.user) {
+    await updateProfile(result.user, { displayName: displayName.trim() });
+  }
+  return result.user;
+}
+
+export async function signInAsGuest() {
+  const result = await signInAnonymously(auth);
+  return result.user;
+}
+
+export async function sendResetPassword(email: string) {
+  await sendPasswordResetEmail(auth, email.trim());
 }
 
 export async function signOutFromCloud() {

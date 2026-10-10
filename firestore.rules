@@ -71,12 +71,14 @@ service cloud.firestore {
       allow get: if isValidId(sheetId) && (resource == null || isSharedWorkspace(existing().workspaceId));
       allow list: if existing().workspaceId == 'pea-fang-shared';
 
-      allow create: if isValidId(sheetId) &&
+      allow create: if request.auth != null &&
+        isValidId(sheetId) &&
         isValidSheet(incoming()) &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
 
-      allow update: if isValidId(sheetId) &&
+      allow update: if request.auth != null &&
+        isValidId(sheetId) &&
         isValidSheet(incoming()) &&
         isSharedWorkspace(existing().workspaceId) &&
         incoming().workspaceId == existing().workspaceId &&
@@ -95,7 +97,8 @@ service cloud.firestore {
           'updatedAt'
         ]);
 
-      allow delete: if isValidId(sheetId) &&
+      allow delete: if request.auth != null &&
+        isValidId(sheetId) &&
         isSharedWorkspace(existing().workspaceId);
     }
   }

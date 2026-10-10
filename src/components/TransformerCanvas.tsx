@@ -149,6 +149,17 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   const canvasSizeMode: 'a4_landscape' = 'a4_landscape'; // ล็อคขนาดเท่า A4 แนวนอนเป็นมาตรฐาน
   const [symbolScale, setSymbolScale] = useState<number>(0.85); // 0.85 default (ขนาดสัญลักษณ์กะทัดรัดลง)
   const canvasOrientation: 'landscape' = 'landscape'; // แนวนอนเป็นมาตรฐานถาวรตามความต้องการของผู้ใช้
+  const [isTextBgTransparent, setIsTextBgTransparent] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('canvas_text_bg_transparent');
+      if (saved !== null) {
+        return saved === 'true';
+      }
+    } catch {
+      // fallback
+    }
+    return true; // ค่าเริ่มต้นเป็นพื้นโปร่งใสตามความต้องการของผู้ใช้
+  });
 
   // Draggable floating toolbar state
   const canvasRootRef = useRef<HTMLDivElement>(null);
@@ -881,6 +892,31 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             <span className="hidden sm:inline text-[11px]">ตาราง</span>
           </button>
 
+          {/* Toggle Text Background (Transparent vs Boxed) */}
+          <button
+            id="btn-toggle-text-bg"
+            onClick={() => {
+              const next = !isTextBgTransparent;
+              setIsTextBgTransparent(next);
+              localStorage.setItem('canvas_text_bg_transparent', String(next));
+            }}
+            title={
+              isTextBgTransparent
+                ? 'พื้นหลังข้อความ: โปร่งใส (คลิกเพื่อเปลี่ยนเป็นมีกรอบการ์ดทึบ)'
+                : 'พื้นหลังข้อความ: มีกรอบการ์ดทึบ (คลิกเพื่อเปลี่ยนเป็นพื้นโปร่งใส)'
+            }
+            className={`p-1 rounded-md transition-colors text-xs flex items-center gap-1 font-medium ${
+              isTextBgTransparent
+                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Type className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden sm:inline text-[11px]">
+              {isTextBgTransparent ? 'พื้นโปร่งใส' : 'พื้นมีกรอบ'}
+            </span>
+          </button>
+
           {/* Symbol Size Scaling Button */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-md p-0.5 border border-slate-200 dark:border-slate-700 text-xs">
             <button
@@ -1541,6 +1577,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             const isVertical = label.orientation === 'vertical';
             const isSelected = selectedAnnotationId === label.id;
             const isBeingDragged = draggingItem?.type === 'annotation' && draggingItem.id === label.id;
+            const curX = isBeingDragged ? draggingItem.currentX : label.x;
+            const curY = isBeingDragged ? draggingItem.currentY : label.y;
 
             // Compute hit-box bounds according to annotation type
             let hitW = Math.max(80, (label.text?.length || 4) * 14 + 24);
@@ -1571,7 +1609,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
               <g
                 key={label.id}
                 id={`ann-${label.id}`}
-                transform={`translate(${label.x}, ${label.y})`}
+                transform={`translate(${curX}, ${curY})`}
                 className={`${
                   isDraggable
                     ? (isBeingDragged ? 'cursor-grabbing' : 'cursor-grab')
@@ -1592,7 +1630,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   const original = annotations.find(orig => orig.id === label.id) || label;
                   onEditAnnotation?.(original);
                 }}
-                onMouseDown={(e) => startDrag('annotation', label.id, label.x, label.y, e)}
+                onMouseDown={(e) => startDrag('annotation', label.id, curX, curY, e)}
               >
                 {/* Large Transparent Hitbox for Smooth Dragging & Clicking */}
                 <rect
@@ -1644,7 +1682,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       textAnchor="middle"
                       fontFamily="monospace"
                     >
-                      {label.x}, {label.y}
+                      {curX}, {curY}
                     </text>
                   </g>
                 )}
@@ -1656,7 +1694,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       y="-35"
                       width="260"
                       height="70"
-                      fill="#ffffff"
+                      fill={isTextBgTransparent ? 'none' : '#ffffff'}
                       stroke="#000000"
                       strokeWidth="1.5"
                       rx="2"
@@ -1804,7 +1842,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       y="-12"
                       width="28"
                       height="24"
-                      fill={isOpened ? '#fef3c7' : '#ffffff'}
+                      fill={isOpened ? '#fef3c7' : (isTextBgTransparent ? 'none' : '#ffffff')}
                       stroke={isOpened ? '#d97706' : '#000000'}
                       strokeWidth={2}
                     />
@@ -1836,7 +1874,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       y="-13"
                       width="30"
                       height="26"
-                      fill={isOpened ? '#fef3c7' : '#ffffff'}
+                      fill={isOpened ? '#fef3c7' : (isTextBgTransparent ? 'none' : '#ffffff')}
                       stroke={isOpened ? '#d97706' : '#000000'}
                       strokeWidth={2}
                     />
@@ -1867,7 +1905,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       y="-12"
                       width="40"
                       height="24"
-                      fill={isOpened ? '#fef3c7' : '#ffffff'}
+                      fill={isOpened ? '#fef3c7' : (isTextBgTransparent ? 'none' : '#ffffff')}
                       stroke={isOpened ? '#d97706' : '#0f172a'}
                       strokeWidth={isOpened ? 2 : 1.5}
                       rx="3"
@@ -2084,17 +2122,19 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 {/* Text Metadata Block (kVA, PEA No., Name) with protective background badge & halo */}
                 <g transform={`translate(${textX}, ${textY})`}>
                   {/* Background plate to ensure text never clashes with symbols or wires */}
-                  <rect
-                    x={badgeX}
-                    y={badgeY}
-                    width={badgeW}
-                    height={badgeH}
-                    rx="6"
-                    fill={themeStyles.canvasPaper}
-                    fillOpacity="0.98"
-                    stroke={themeStyles.border}
-                    strokeWidth="1"
-                  />
+                  {!isTextBgTransparent && (
+                    <rect
+                      x={badgeX}
+                      y={badgeY}
+                      width={badgeW}
+                      height={badgeH}
+                      rx="6"
+                      fill={themeStyles.canvasPaper}
+                      fillOpacity="0.98"
+                      stroke={themeStyles.border}
+                      strokeWidth="1"
+                    />
+                  )}
 
                   {/* kVA Rating with unit & color */}
                   <text
@@ -2107,8 +2147,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     fill={isPrivate ? '#9333ea' : '#2563eb'}
                     style={{
                       paintOrder: 'stroke fill',
-                      stroke: themeStyles.canvasPaper,
-                      strokeWidth: '2px',
+                      stroke: isTextBgTransparent ? 'none' : themeStyles.canvasPaper,
+                      strokeWidth: isTextBgTransparent ? '0px' : '2px',
                       strokeLinejoin: 'round'
                     }}
                   >
@@ -2126,8 +2166,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     fill={themeStyles.textSecondary}
                     style={{
                       paintOrder: 'stroke fill',
-                      stroke: themeStyles.canvasPaper,
-                      strokeWidth: '2px',
+                      stroke: isTextBgTransparent ? 'none' : themeStyles.canvasPaper,
+                      strokeWidth: isTextBgTransparent ? '0px' : '2px',
                       strokeLinejoin: 'round'
                     }}
                   >
@@ -2145,8 +2185,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     fontWeight="700"
                     style={{
                       paintOrder: 'stroke fill',
-                      stroke: themeStyles.canvasPaper,
-                      strokeWidth: '2px',
+                      stroke: isTextBgTransparent ? 'none' : themeStyles.canvasPaper,
+                      strokeWidth: isTextBgTransparent ? '0px' : '2px',
                       strokeLinejoin: 'round'
                     }}
                   >

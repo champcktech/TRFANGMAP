@@ -29,12 +29,17 @@ import { SwitchModal } from './components/SwitchModal';
 import { AnnotationModal } from './components/AnnotationModal';
 import { PrintModal } from './components/PrintModal';
 import { ShareModal } from './components/ShareModal';
-import { CheckCircle2, AlertCircle, Info, Undo2 } from 'lucide-react';
+import { LoginPage } from './components/LoginPage';
+import { CheckCircle2, AlertCircle, Info, Undo2, Zap } from 'lucide-react';
 
 import { decodeSheetsFromPayload } from './utils/shareUtils';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './firebase';
-import { saveSheetsToCloudFirestore, fetchSheetsFromCloudFirestore } from './services/firebaseDbService';
+import { 
+  saveSheetsToCloudFirestore, 
+  fetchSheetsFromCloudFirestore,
+  signOutFromCloud 
+} from './services/firebaseDbService';
 
 const STORAGE_KEY_SHEETS = 'pea_sld_all_sheets_v7_clean';
 const STORAGE_KEY_ACTIVE_SHEET_ID = 'pea_sld_active_sheet_id_v7';
@@ -384,6 +389,9 @@ export default function App() {
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [cloudUser, setCloudUser] = useState<{ uid: string; email?: string | null; displayName?: string | null } | null>(null);
   const [isCloudAutoSync, setIsCloudAutoSync] = useState<boolean>(true);
   const [isCloudInitialLoaded, setIsCloudInitialLoaded] = useState<boolean>(false);
@@ -396,7 +404,23 @@ export default function App() {
     setTimeout(() => setToast(null), 3500);
   }, []);
 
+  const handleSignOut = useCallback(async () => {
+    if (confirm('คุณต้องการออกจากระบบหรือไม่?')) {
+      try {
+        await signOutFromCloud();
+        showToast('ออกจากระบบเรียบร้อยแล้ว', 'info');
+      } catch (err: any) {
+        showToast('เกิดข้อผิดพลาดในการออกจากระบบ', 'error');
+      }
+    }
+  }, [showToast]);
+
   const handleToggleReadOnly = useCallback(() => {
+    if (!currentUser) {
+      setIsLoginModalOpen(true);
+      showToast('กรุณาเข้าสู่ระบบก่อนเพื่อแก้ไขผังวงจร', 'info');
+      return;
+    }
     setIsReadOnly(prev => {
       const next = !prev;
       showToast(
@@ -405,7 +429,7 @@ export default function App() {
       );
       return next;
     });
-  }, [showToast]);
+  }, [currentUser, showToast]);
 
   const handleToggleDraggable = useCallback(() => {
     setIsDraggable(prev => {
@@ -430,7 +454,26 @@ export default function App() {
     } catch (e) {}
   }, [theme]);
 
-  // Automatically load & sync shared Cloud Firestore data on mount (no login required)
+  // Track Firebase Authentication State
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setIsAuthLoading(false);
+      if (user) {
+        setCloudUser({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName
+        });
+      } else {
+        setCloudUser(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Automatically load shared Cloud Firestore data on mount (both for viewers and editors)
   useEffect(() => {
     let isMounted = true;
     async function initSharedCloudDb() {
@@ -440,7 +483,7 @@ export default function App() {
 
         if (!isMounted) return;
 
-        if (!alreadyClearedCloud) {
+        if (currentUser && !alreadyClearedCloud) {
           const baseSheets = cloudSheets.length > 0 ? cloudSheets : sheets;
           const cleanedSheets = baseSheets.map(s => ({
             ...s,
@@ -452,7 +495,7 @@ export default function App() {
           localStorage.setItem(STORAGE_KEY_CLEARED_CLOUD_TFS, 'true');
         } else if (cloudSheets.length > 0) {
           setSheets(cloudSheets);
-        } else {
+        } else if (currentUser) {
           await saveSheetsToCloudFirestore(sheets);
         }
         if (isMounted) {
@@ -473,27 +516,14 @@ export default function App() {
 
     initSharedCloudDb();
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setCloudUser({
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName
-        });
-      } else {
-        setCloudUser(null);
-      }
-    });
-
     return () => {
       isMounted = false;
-      unsubscribe();
     };
-  }, []);
+  }, [currentUser]);
 
-  // Debounced auto-save to shared Cloud Firestore when sheets change (no login required)
+  // Debounced auto-save to shared Cloud Firestore when sheets change (only when authenticated)
   useEffect(() => {
-    if (!isCloudAutoSync || !isCloudInitialLoaded || isReadOnly) return;
+    if (!currentUser || !isCloudAutoSync || !isCloudInitialLoaded || isReadOnly) return;
     const timer = setTimeout(async () => {
       try {
         await saveSheetsToCloudFirestore(sheets);
@@ -507,7 +537,7 @@ export default function App() {
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly]);
+  }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly, currentUser]);
 
   // Calculations
   const totalKva = useMemo(() => {
@@ -892,6 +922,32 @@ export default function App() {
     };
   }, [sheets, activeSheetId]);
 
+  // 1. Auth Loading Splash Screen
+  if (isAuthLoading) {
+    return (
+      <div className="w-screen h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 text-white font-sans select-none p-4">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-purple-600 flex items-center justify-center shadow-2xl shadow-indigo-500/25 mb-4 animate-bounce">
+          <Zap className="w-8 h-8 fill-white text-white" />
+        </div>
+        <h2 className="text-base font-bold text-slate-100 mb-1">กำลังตรวจสอบสิทธิ์การเข้าใช้งาน...</h2>
+        <p className="text-xs text-slate-400">ระบบผังหม้อแปลงและวงจรจำหน่ายไฟฟ้า (กฟส.ฝาง)</p>
+      </div>
+    );
+  }
+
+  // 2. Authentication Gate: Require Login only for editing; allow View-Only access without login
+  if (!currentUser && !isReadOnly) {
+    return (
+      <LoginPage 
+        onSuccess={() => showToast('เข้าสู่ระบบสำเร็จ ยินดีต้อนรับสู่ระบบผังวงจรไฟฟ้า')} 
+        onEnterViewOnly={() => {
+          setIsReadOnly(true);
+          showToast('เข้าสู่โหมดดูผังวงจรอย่างเดียว (ไม่ต้องเข้าสู่ระบบ)', 'info');
+        }}
+      />
+    );
+  }
+
   return (
     <div className={`w-screen h-screen flex flex-col overflow-hidden font-sans ${theme === 'dark' || theme === 'blueprint' ? 'dark' : ''}`}>
       {/* Top Navbar */}
@@ -909,6 +965,9 @@ export default function App() {
         activeSheetId={activeSheet.id}
         sheets={sheets}
         totalSheets={sheets.length}
+        currentUser={currentUser}
+        onSignIn={() => setIsLoginModalOpen(true)}
+        onSignOut={handleSignOut}
         onSelectView={setCurrentView}
         onSelectSheet={handleSelectSheet}
         onSearchChange={setSearchQuery}
@@ -1272,6 +1331,24 @@ export default function App() {
           showToast(`นำเข้าผังสำเร็จ ${importedSheets.length} หน้า`, 'success');
         }}
       />
+
+      {/* Login Modal for unauthenticated users in View Mode who want to log in & edit */}
+      {isLoginModalOpen && !currentUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-150">
+          <LoginPage
+            onSuccess={() => {
+              setIsLoginModalOpen(false);
+              setIsReadOnly(false);
+              showToast('เข้าสู่ระบบสำเร็จ ยินดีต้อนรับสู่โหมดแก้ไขผังวงจร');
+            }}
+            onEnterViewOnly={() => {
+              setIsLoginModalOpen(false);
+              setIsReadOnly(true);
+            }}
+            onClose={() => setIsLoginModalOpen(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
