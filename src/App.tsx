@@ -978,6 +978,7 @@ export default function App() {
         onOpenGoogleSheetsModal={() => setIsSheetsModalOpen(true)}
         onPrintDiagram={() => setIsPrintModalOpen(true)}
         onOpenShareModal={() => setIsShareModalOpen(true)}
+        onOpenEditSheetModal={() => handleOpenEditSheetModal(activeSheet)}
       />
 
       {/* Multi-Sheet Tab Bar */}

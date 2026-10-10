@@ -19,7 +19,8 @@ import {
   ExternalLink,
   Database,
   LogOut,
-  LogIn
+  LogIn,
+  Edit3
 } from 'lucide-react';
 import { GoogleSheetConfig, DiagramSheet } from '../types';
 
@@ -54,6 +55,7 @@ interface NavbarProps {
   onOpenAddModal: () => void;
   onOpenGoogleSheetsModal: () => void;
   onPrintDiagram: () => void;
+  onOpenEditSheetModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -82,7 +84,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenShareModal,
   onOpenAddModal,
   onOpenGoogleSheetsModal,
-  onPrintDiagram
+  onPrintDiagram,
+  onOpenEditSheetModal
 }) => {
   return (
     <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-30 shadow-xs">
@@ -123,6 +126,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {sheetNo}
               </span>
             </div>
+          )}
+
+          {!isReadOnly && onOpenEditSheetModal && (
+            <button
+              type="button"
+              onClick={onOpenEditSheetModal}
+              title="แก้ไขชื่อหน้าผัง / ข้อมูลสายป้อน (เปลี่ยนชื่อหน้า)"
+              className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer shrink-0"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+            </button>
           )}
 
           {isReadOnly ? (

@@ -142,6 +142,20 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                     {tfCount} ลูก
                   </span>
 
+                  {/* Quick Edit Icon on active tab */}
+                  {!isReadOnly && isActive && (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenEditSheetModal(sheet);
+                      }}
+                      className="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 transition-colors cursor-pointer"
+                      title="คลิกเพื่อเปลี่ยนชื่อหน้าผัง / ข้อมูลสายป้อน"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                    </span>
+                  )}
+
                   {/* More Action Dot Button (Editor only) */}
                   {!isReadOnly && (
                     <span
@@ -149,9 +163,10 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                         e.stopPropagation();
                         setMenuOpenSheetId(isMenuOpen ? null : sheet.id);
                       }}
-                      className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 ${
+                      className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer ${
                         isActive ? 'opacity-70 hover:opacity-100' : 'opacity-0 group-hover:opacity-70 hover:!opacity-100'
                       }`}
+                      title="เมนูจัดการหน้านี้ (เปลี่ยนชื่อ / คัดลอก / ลบ)"
                     >
                       <MoreVertical className="w-3 h-3" />
                     </span>

@@ -68,6 +68,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
         return 'ไม่สามารถเชื่อมต่อเครือข่ายได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต';
       case 'auth/too-many-requests':
         return 'มีการพยายามเข้าสู่ระบบผิดหลายครั้งเกินไป ระบบถูกระงับชั่วคราวเพื่อความปลอดภัย';
+      case 'auth/unauthorized-domain':
+        return 'โดเมนของเว็บไซต์นี้ยังไม่ได้เพิ่มใน Authorized Domains ของ Google/Firebase แนะนำให้ใช้วิธีสมัคร/เข้าสู่ระบบด้วย "อีเมลและรหัสผ่าน" ด้านล่าง หรือกด "เข้าใช้งานแบบผู้เยี่ยมชม" หรือกด "เข้าดูผัง" ได้ทันทีครับ';
       default:
         return err?.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง';
     }
