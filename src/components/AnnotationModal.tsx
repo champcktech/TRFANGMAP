@@ -496,7 +496,7 @@ export const AnnotationModal: React.FC<AnnotationModalProps> = ({
             <div className="h-20 flex items-center justify-center bg-slate-50 dark:bg-slate-950/70 rounded-lg border border-slate-100 dark:border-slate-800 p-2 overflow-hidden">
               {matchedLandmark ? (
                 <div 
-                  className={`inline-flex items-center gap-2 p-2 rounded-xl border shadow-xs transition-all ${
+                  className={`inline-flex items-center gap-2 p-1.5 transition-all ${
                     (formData.textPosition === 'top')
                       ? 'flex-col-reverse'
                       : (formData.textPosition === 'bottom' || (!formData.textPosition && formData.orientation === 'vertical'))
@@ -505,10 +505,6 @@ export const AnnotationModal: React.FC<AnnotationModalProps> = ({
                       ? 'flex-row-reverse'
                       : 'flex-row'
                   }`}
-                  style={{
-                    backgroundColor: matchedLandmark.badgeBg,
-                    borderColor: currentColor
-                  }}
                 >
                   <span className="text-xl leading-none">{matchedLandmark.icon}</span>
                   <span 

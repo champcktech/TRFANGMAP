@@ -1921,35 +1921,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   </g>
                 ) : isLandmark ? (
                   <g>
-                    <rect
-                      x={hitX}
-                      y={hitY}
-                      width={hitW}
-                      height={hitH}
-                      rx="7"
-                      fill={isTextBgTransparent ? 'none' : (
-                        label.type === 'school' ? (theme === 'blueprint' ? '#172554' : '#eff6ff') :
-                        label.type === 'temple' ? (theme === 'blueprint' ? '#292524' : '#fffbeb') :
-                        label.type === 'hospital' ? (theme === 'blueprint' ? '#450a0a' : '#fef2f2') :
-                        label.type === 'government' ? (theme === 'blueprint' ? '#082f49' : '#f0f9ff') :
-                        label.type === 'makro' ? (theme === 'blueprint' ? '#4c0519' : '#fff1f2') :
-                        label.type === 'lotus' ? (theme === 'blueprint' ? '#064e3b' : '#ecfdf5') :
-                        /* seven_eleven */ (theme === 'blueprint' ? '#431407' : '#fff7ed')
-                      )}
-                      fillOpacity="0.95"
-                      stroke={label.color || (
-                        label.type === 'school' ? '#2563eb' :
-                        label.type === 'temple' ? '#d97706' :
-                        label.type === 'hospital' ? '#dc2626' :
-                        label.type === 'government' ? '#0284c7' :
-                        label.type === 'makro' ? '#e11d48' :
-                        label.type === 'lotus' ? '#059669' :
-                        '#ea580c'
-                      )}
-                      strokeWidth="1.5"
-                    />
-
-                    {/* Landmark Specific Icons */}
+                    {/* Landmark Specific Icons (No outer border/frame around text) */}
                     {label.type === 'school' && (
                       <g>
                         <circle cx={iconX} cy={iconY} r={11} fill={label.color || '#2563eb'} />
@@ -2054,6 +2026,10 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                         label.type === 'lotus' ? '#059669' :
                         '#ea580c'
                       )}
+                      stroke={theme === 'blueprint' ? '#0f172a' : '#ffffff'}
+                      strokeWidth="2.5"
+                      paintOrder="stroke fill"
+                      strokeLinejoin="round"
                       fontSize={fs}
                       fontWeight="bold"
                       dominantBaseline={dominantBaseline}
