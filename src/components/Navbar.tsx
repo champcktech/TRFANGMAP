@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Zap, 
   Map, 
@@ -20,9 +20,12 @@ import {
   Database,
   LogOut,
   LogIn,
-  Edit3
+  Edit3,
+  X,
+  Compass,
+  ArrowRight
 } from 'lucide-react';
-import { GoogleSheetConfig, DiagramSheet } from '../types';
+import { GoogleSheetConfig, DiagramSheet, Transformer } from '../types';
 
 interface NavbarProps {
   currentView: 'canvas' | 'table' | 'stats';
@@ -48,6 +51,7 @@ interface NavbarProps {
   onSelectView: (view: 'canvas' | 'table' | 'stats') => void;
   onSelectSheet?: (sheetId: string) => void;
   onSearchChange: (query: string) => void;
+  onSelectTransformer?: (transformer: Transformer, sheetId?: string) => void;
   onThemeToggle: () => void;
   onToggleDraggable: () => void;
   onToggleReadOnly?: () => void;
@@ -78,6 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectView,
   onSelectSheet,
   onSearchChange,
+  onSelectTransformer,
   onThemeToggle,
   onToggleDraggable,
   onToggleReadOnly,
@@ -87,72 +92,271 @@ export const Navbar: React.FC<NavbarProps> = ({
   onPrintDiagram,
   onOpenEditSheetModal
 }) => {
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Close search popover on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Keyboard shortcut Ctrl+K or / to focus search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        setIsSearchFocused(true);
+      } else if (e.key === 'Escape') {
+        setIsSearchFocused(false);
+        setIsMobileSearchOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Filter transformers across active sheet and other sheets
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    const results: {
+      transformer: Transformer;
+      sheetId: string;
+      sheetName: string;
+      isCurrentSheet: boolean;
+    }[] = [];
+
+    // Active sheet first
+    const currentSheetObj = sheets.find(s => s.id === activeSheetId);
+    if (currentSheetObj && currentSheetObj.transformers) {
+      currentSheetObj.transformers.forEach(t => {
+        const match = 
+          t.peaNo.toLowerCase().includes(q) ||
+          t.name.toLowerCase().includes(q) ||
+          String(t.kva).includes(q) ||
+          (t.notes && t.notes.toLowerCase().includes(q)) ||
+          (t.poleNo && t.poleNo.toLowerCase().includes(q));
+        if (match) {
+          results.push({
+            transformer: t,
+            sheetId: currentSheetObj.id,
+            sheetName: `${currentSheetObj.sheetNo || ''} ${currentSheetObj.title || ''}`.trim(),
+            isCurrentSheet: true
+          });
+        }
+      });
+    }
+
+    // Other sheets next
+    sheets.forEach(s => {
+      if (s.id !== activeSheetId && s.transformers) {
+        s.transformers.forEach(t => {
+          const match = 
+            t.peaNo.toLowerCase().includes(q) ||
+            t.name.toLowerCase().includes(q) ||
+            String(t.kva).includes(q) ||
+            (t.notes && t.notes.toLowerCase().includes(q)) ||
+            (t.poleNo && t.poleNo.toLowerCase().includes(q));
+          if (match) {
+            results.push({
+              transformer: t,
+              sheetId: s.id,
+              sheetName: `${s.sheetNo || ''} ${s.title || ''}`.trim(),
+              isCurrentSheet: false
+            });
+          }
+        });
+      }
+    });
+
+    return results.slice(0, 20); // Top 20 results
+  }, [searchQuery, sheets, activeSheetId]);
+
+  const handleResultClick = (item: { transformer: Transformer; sheetId: string; isCurrentSheet: boolean }) => {
+    if (onSelectTransformer) {
+      onSelectTransformer(item.transformer, item.sheetId);
+    } else if (!item.isCurrentSheet && onSelectSheet) {
+      onSelectSheet(item.sheetId);
+    }
+    setIsSearchFocused(false);
+    setIsMobileSearchOpen(false);
+  };
+
   return (
     <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-30 shadow-xs">
-      {/* Brand & Title / Sheet Selector */}
-      <div className="flex items-center gap-2">
-        <div className={`w-7 h-7 rounded-lg ${
+      {/* 1. Brand Title: ผังหม้อแปลงจำหน่าย กฟส.ฝาง */}
+      <div className="flex items-center gap-2.5">
+        <div className={`w-8 h-8 rounded-lg ${
           isReadOnly 
             ? 'bg-gradient-to-tr from-indigo-600 via-purple-600 to-blue-600' 
             : 'bg-gradient-to-tr from-blue-700 via-blue-600 to-indigo-600'
         } flex items-center justify-center text-white shadow-sm shrink-0`}>
-          {isReadOnly ? <Eye className="w-3.5 h-3.5 fill-white/20 text-white" /> : <Zap className="w-3.5 h-3.5 fill-white" />}
+          {isReadOnly ? <Eye className="w-4 h-4 fill-white/20 text-white" /> : <Zap className="w-4 h-4 fill-white" />}
         </div>
 
-        <div className="min-w-0 flex items-center gap-1.5">
-          {/* Direct Sheet Selector Dropdown in Navbar */}
-          {sheets.length > 1 && onSelectSheet ? (
-            <div className="relative flex items-center">
-              <select
-                value={activeSheetId}
-                onChange={(e) => onSelectSheet(e.target.value)}
-                className="appearance-none pl-2 pr-6 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-700 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500"
-                title="คลิกเพื่อเลือกหน้าผังวงจร"
-              >
-                {sheets.map((s, idx) => (
-                  <option key={s.id} value={s.id}>
-                    {s.sheetNo || `(${idx + 1})`} {s.title || `ผังหน้า ${idx + 1}`} ({s.transformers?.length || 0} ลูก)
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 absolute right-1.5 text-slate-500 pointer-events-none" />
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <h1 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white leading-tight truncate">
-                ผังหม้อแปลง {sheetTitle}
-              </h1>
-              <span className="hidden sm:inline-block px-1.5 py-0.2 text-[9px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 rounded font-mono">
-                {sheetNo}
+        <div className="flex flex-col min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <h1 className="font-extrabold text-xs sm:text-sm md:text-base text-slate-900 dark:text-white leading-tight tracking-tight whitespace-nowrap">
+              ผังหม้อแปลงจำหน่าย กฟส.ฝาง
+            </h1>
+            {isReadOnly ? (
+              <span className="px-1.5 py-0.2 text-[9px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300 rounded flex items-center gap-0.5 shrink-0">
+                <Eye className="w-2.5 h-2.5" />
+                <span>แสดงอย่างเดียว</span>
               </span>
-            </div>
-          )}
+            ) : null}
+          </div>
 
-          {!isReadOnly && onOpenEditSheetModal && (
-            <button
-              type="button"
-              onClick={onOpenEditSheetModal}
-              title="แก้ไขชื่อหน้าผัง / ข้อมูลสายป้อน (เปลี่ยนชื่อหน้า)"
-              className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer shrink-0"
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-            </button>
-          )}
-
-          {isReadOnly ? (
-            <span className="px-1.5 py-0.2 text-[9px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300 rounded flex items-center gap-0.5 shrink-0">
-              <Eye className="w-2.5 h-2.5" />
-              <span>แสดงอย่างเดียว</span>
+          <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 truncate">
+            <span className="font-semibold text-blue-600 dark:text-blue-400">
+              หน้า {sheetNo} {sheetTitle}
             </span>
-          ) : null}
-
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 hidden lg:inline">
-            &bull; {transformerCount} ลูก ({totalKva.toLocaleString()} kVA)
-          </span>
+            {!isReadOnly && onOpenEditSheetModal && (
+              <button
+                type="button"
+                onClick={onOpenEditSheetModal}
+                title="แก้ไขชื่อหน้าผัง / ข้อมูลสายป้อน"
+                className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded p-0.5 transition-colors cursor-pointer"
+              >
+                <Edit3 className="w-2.5 h-2.5" />
+              </button>
+            )}
+            <span className="hidden sm:inline">&bull; {transformerCount} ลูก ({totalKva.toLocaleString()} kVA)</span>
+          </div>
         </div>
       </div>
 
-      {/* View Switcher Tabs */}
+      {/* 2. ช่องสำหรับ ค้นหาหม้อแปลง (Search Box for Transformers) */}
+      <div 
+        ref={searchContainerRef} 
+        className="relative flex-1 max-w-xs sm:max-w-sm md:max-w-md min-w-[140px] order-last sm:order-none w-full sm:w-auto mt-1 sm:mt-0"
+      >
+        <div className="relative flex items-center">
+          <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-blue-600 dark:text-blue-400 pointer-events-none flex items-center">
+            <Search className="w-3.5 h-3.5" />
+          </div>
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onFocus={() => setIsSearchFocused(true)}
+            onChange={e => {
+              onSearchChange(e.target.value);
+              setIsSearchFocused(true);
+            }}
+            placeholder="ค้นหาหม้อแปลง (หมายเลข PEA, ชื่อ, ขนาด kVA)..."
+            className="w-full pl-8 pr-16 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 hover:bg-white focus:bg-white dark:bg-slate-800/80 dark:hover:bg-slate-800 dark:focus:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 shadow-2xs transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+          />
+
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            {searchQuery ? (
+              <>
+                <span className="hidden md:inline-block text-[9px] px-1 py-0.2 font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300 rounded font-mono">
+                  {searchResults.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSearchChange('');
+                    searchInputRef.current?.focus();
+                  }}
+                  title="ล้างคำค้นหา"
+                  className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer rounded"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </>
+            ) : (
+              <kbd className="hidden lg:inline-block text-[9px] font-mono bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1 py-0.2 rounded border border-slate-300 dark:border-slate-600">
+                Ctrl+K
+              </kbd>
+            )}
+          </div>
+        </div>
+
+        {/* Autocomplete / Search Results Popover */}
+        {isSearchFocused && searchQuery.trim().length > 0 && (
+          <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-80 overflow-y-auto z-50 py-1.5 divide-y divide-slate-100 dark:divide-slate-700/60">
+            <div className="px-3 py-1 flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              <span>ผลการค้นหา ({searchResults.length} รายการ)</span>
+              <span className="text-[10px] text-slate-400">คลิกเพื่อซูมไปยังหม้อแปลง</span>
+            </div>
+
+            {searchResults.length === 0 ? (
+              <div className="px-4 py-4 text-center text-xs text-slate-500 dark:text-slate-400">
+                ไม่พบหม้อแปลงที่ตรงกับ &ldquo;<span className="font-semibold text-slate-700 dark:text-slate-200">{searchQuery}</span>&rdquo;
+              </div>
+            ) : (
+              <div className="py-1">
+                {searchResults.map((item) => (
+                  <button
+                    key={`${item.sheetId}-${item.transformer.id}`}
+                    type="button"
+                    onClick={() => handleResultClick(item)}
+                    className="w-full px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-slate-700/60 transition-colors flex items-center justify-between gap-2 cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                        item.transformer.type === 'private'
+                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
+                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                      }`}>
+                        ▲
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                            {item.transformer.peaNo}
+                          </span>
+                          <span className="text-xs text-slate-700 dark:text-slate-300 truncate">
+                            {item.transformer.name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          <span className="font-medium text-blue-600 dark:text-blue-400">
+                            {item.transformer.kva} kVA {item.transformer.phase || '3P'}
+                          </span>
+                          <span>&bull;</span>
+                          <span>{item.transformer.type === 'private' ? 'เฉพาะราย' : 'สาธารณะ'}</span>
+                          {item.transformer.feeder && (
+                            <>
+                              <span>&bull;</span>
+                              <span className="truncate">{item.transformer.feeder}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 text-right">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        item.isCurrentSheet
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                      }`}>
+                        {item.isCurrentSheet ? 'หน้านี้' : item.sheetName}
+                      </span>
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 3. View Switcher Tabs */}
       <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700/60">
         <button
           id="tab-view-canvas"
@@ -194,27 +398,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </button>
       </div>
 
-      {/* Search Input */}
-      <div className="relative hidden md:block w-36 lg:w-48">
-        <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={e => onSearchChange(e.target.value)}
-          placeholder="ค้นหาหม้อแปลง..."
-          className="w-full pl-7 pr-2.5 py-1 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => onSearchChange('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
-          >
-            &times;
-          </button>
-        )}
-      </div>
-
-      {/* Right Controls */}
+      {/* 4. Right Controls */}
       <div className="flex items-center gap-1.5">
         {/* Drag/Lock toggle for Canvas (Editor only) */}
         {!isReadOnly && currentView === 'canvas' && (

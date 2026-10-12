@@ -557,6 +557,18 @@ export default function App() {
     }
   };
 
+  const handleSelectTransformerFromSearch = (transformer: Transformer, targetSheetId?: string) => {
+    if (targetSheetId && targetSheetId !== activeSheetId) {
+      setActiveSheetId(targetSheetId);
+    }
+    setCurrentView('canvas');
+    setSelectedTransformer(transformer);
+    setSelectedPath(null);
+    setSelectedSwitch(null);
+    setSelectedAnnotation(null);
+    showToast(`ไปยังหม้อแปลง PEA: ${transformer.peaNo} (${transformer.name})`, 'info');
+  };
+
   const handleOpenNewSheetModal = () => {
     setEditingSheet(null);
     setIsSheetModalOpen(true);
@@ -971,6 +983,7 @@ export default function App() {
         onSelectView={setCurrentView}
         onSelectSheet={handleSelectSheet}
         onSearchChange={setSearchQuery}
+        onSelectTransformer={handleSelectTransformerFromSearch}
         onThemeToggle={handleThemeToggle}
         onToggleDraggable={handleToggleDraggable}
         onToggleReadOnly={handleToggleReadOnly}
