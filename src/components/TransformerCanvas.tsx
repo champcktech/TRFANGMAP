@@ -1508,7 +1508,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
               
               {/* Row 2 */}
               <text x="12" y="79" fill={themeStyles.textSecondary} fontSize="9.5" fontFamily="sans-serif">
-                หม้อแปลง: <tspan fill={themeStyles.textPrimary} fontWeight="bold">{displayData.transformers.length} ลูก</tspan>
+                หม้อแปลง: <tspan fill={themeStyles.textPrimary} fontWeight="bold">{displayData.transformers.length} เครื่อง</tspan>
               </text>
               <text x="182" y="79" fill={themeStyles.textSecondary} fontSize="9.5" fontFamily="sans-serif">
                 พิกัดผัง: <tspan fill={themeStyles.textPrimary} fontWeight="bold">2079 × 1470 px</tspan>

@@ -959,7 +959,7 @@ export default function App() {
       updatedAt: new Date().toISOString()
     })));
     setSelectedTransformer(null);
-    showToast('ลบข้อมูลหม้อแปลงทั้งหมดในทุกหน้าผังเรียบร้อยแล้ว (0 ลูก)', 'info');
+    showToast('ลบข้อมูลหม้อแปลงทั้งหมดในทุกหน้าผังเรียบร้อยแล้ว (0 เครื่อง)', 'info');
   };
 
   // Sync active sheet when URL hash or params change
@@ -1351,7 +1351,7 @@ export default function App() {
           }
 
           const totalCount = withPaths.reduce((sum, s) => sum + (s.transformers?.length || 0), 0);
-          showToast(`อัปเดตข้อมูลหม้อแปลงทุกหน้า (${withPaths.length} หน้า รวม ${totalCount} ตัว) เรียบร้อยแล้ว`);
+          showToast(`อัปเดตข้อมูลหม้อแปลงทุกหน้า (${withPaths.length} หน้า รวม ${totalCount} เครื่อง) เรียบร้อยแล้ว`);
         }}
         onClearAllTransformers={handleClearAllTransformers}
       />

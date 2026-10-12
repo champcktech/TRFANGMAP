@@ -230,7 +230,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                 <div class="header-meta">สายป้อน: ${feederCode} | การไฟฟ้าส่วนภูมิภาค (PEA)</div>
               </div>
               <div style="text-align: right;">
-                <div style="font-weight: bold; font-size: 10.5pt;">หม้อแปลงรวม ${transformerCount} ลูก (${totalKva.toLocaleString()} kVA)</div>
+                <div style="font-weight: bold; font-size: 10.5pt;">หม้อแปลงรวม ${transformerCount} เครื่อง (${totalKva.toLocaleString()} kVA)</div>
                 <div class="header-meta">พิมพ์เมื่อ: ${new Date().toLocaleString('th-TH')}</div>
               </div>
             </div>

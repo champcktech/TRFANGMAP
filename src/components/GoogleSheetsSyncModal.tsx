@@ -107,7 +107,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
       });
       setStatusMessage({
         type: 'success',
-        text: `บันทึกผังวงจรทั้งหมด ${count} หน้า (รวมหม้อแปลง ${allSheetsTransformers.length} ลูก + เส้นวงจร + สวิตช์) ลง Cloud Database กลางสำเร็จ! ทุกคนที่เข้าเว็บจะเห็นข้อมูลชุดนี้ทันที (${now})`
+        text: `บันทึกผังวงจรทั้งหมด ${count} หน้า (รวมหม้อแปลง ${allSheetsTransformers.length} เครื่อง + เส้นวงจร + สวิตช์) ลง Cloud Database กลางสำเร็จ! ทุกคนที่เข้าเว็บจะเห็นข้อมูลชุดนี้ทันที (${now})`
       });
     } catch (err: any) {
       setStatusMessage({ type: 'error', text: err?.message || 'เกิดข้อผิดพลาดในการบันทึกขึ้น Cloud Database' });
@@ -141,7 +141,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
         });
         setStatusMessage({
           type: 'success',
-          text: `ดึงข้อมูลจาก Cloud Database สำเร็จ! โหลดผังจำนวน ${loadedSheets.length} หน้า (หม้อแปลงรวม ${totalTr} ลูก) เรียบร้อยแล้ว (${now})`
+          text: `ดึงข้อมูลจาก Cloud Database สำเร็จ! โหลดผังจำนวน ${loadedSheets.length} หน้า (หม้อแปลงรวม ${totalTr} เครื่อง) เรียบร้อยแล้ว (${now})`
         });
       }
     } catch (err: any) {
@@ -183,7 +183,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
 
       setStatusMessage({
         type: 'success',
-        text: `ลบข้อมูลหม้อแปลงทั้งหมดออกจากทุกหน้าผังและฐานข้อมูล Cloud เรียบร้อยแล้ว (เหลือ 0 ลูก) เวลา ${now}`
+        text: `ลบข้อมูลหม้อแปลงทั้งหมดออกจากทุกหน้าผังและฐานข้อมูล Cloud เรียบร้อยแล้ว (เหลือ 0 เครื่อง) เวลา ${now}`
       });
     } catch (err: any) {
       setStatusMessage({
@@ -364,7 +364,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 <div className="space-y-0.5">
                   <div className="text-xs font-bold text-red-900 dark:text-red-200 flex items-center gap-1.5">
                     <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                    <span>ล้างข้อมูลหม้อแปลงทั้งหมด (ปัจจุบันมี {allSheetsTransformers.length} ลูก)</span>
+                    <span>ล้างข้อมูลหม้อแปลงทั้งหมด (ปัจจุบันมี {allSheetsTransformers.length} เครื่อง)</span>
                   </div>
                   <p className="text-[11px] text-red-700 dark:text-red-400">
                     ลบหม้อแปลงทั้งหมดออกจากทุกหน้าผัง (คงเส้นสายป้อน สวิตช์ และป้ายชื่อไว้)

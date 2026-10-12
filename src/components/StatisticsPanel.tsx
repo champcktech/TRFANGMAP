@@ -86,7 +86,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
             <span className="text-sm font-normal ml-1">kVA</span>
           </div>
           <div className="text-[11px] opacity-75 mt-2">
-            เฉลี่ย {(transformers.length ? Math.round(totalKva / transformers.length) : 0)} kVA ต่อลูก
+            เฉลี่ย {(transformers.length ? Math.round(totalKva / transformers.length) : 0)} kVA ต่อเครื่อง
           </div>
         </div>
 
@@ -98,7 +98,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
           </div>
           <div className="text-3xl font-extrabold text-slate-900 dark:text-white">
             {transformers.length}
-            <span className="text-sm font-normal text-slate-500 ml-1">ลูก</span>
+            <span className="text-sm font-normal text-slate-500 ml-1">เครื่อง</span>
           </div>
           <div className="text-[11px] text-slate-400 mt-2">
             สวิตช์และอุปกรณ์ตัดตอน {switches.length} จุด
@@ -118,7 +118,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
           </div>
           <div className="text-3xl font-extrabold text-blue-600">
             {publicCount}
-            <span className="text-sm font-normal text-slate-500 ml-1">ลูก</span>
+            <span className="text-sm font-normal text-slate-500 ml-1">เครื่อง</span>
           </div>
           <div className="text-[11px] text-slate-500 mt-2">
             โหลดรวม {publicKva.toLocaleString()} kVA ({Math.round((publicKva / (totalKva || 1)) * 100)}%)
@@ -138,7 +138,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
           </div>
           <div className="text-3xl font-extrabold text-purple-600">
             {privateCount}
-            <span className="text-sm font-normal text-slate-500 ml-1">ลูก</span>
+            <span className="text-sm font-normal text-slate-500 ml-1">เครื่อง</span>
           </div>
           <div className="text-[11px] text-slate-500 mt-2">
             โหลดรวม {privateKva.toLocaleString()} kVA ({Math.round((privateKva / (totalKva || 1)) * 100)}%)
@@ -174,7 +174,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
                         {k} kVA
                       </span>
                       <span className="font-semibold text-slate-700 dark:text-slate-300">
-                        {data.count} ลูก
+                        {data.count} เครื่อง
                       </span>
                     </div>
                     <div className="text-slate-500">
@@ -212,7 +212,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
                       {branchName || 'สายเมน'}
                     </span>
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-500">{info.count} ลูก</span>
+                      <span className="text-slate-500">{info.count} เครื่อง</span>
                       <span className="font-bold text-blue-600 dark:text-blue-400">
                         {info.totalKva.toLocaleString()} kVA
                       </span>

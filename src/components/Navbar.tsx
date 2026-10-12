@@ -269,7 +269,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <Edit3 className="w-2.5 h-2.5" />
               </button>
             )}
-            <span className="hidden sm:inline">&bull; {transformerCount} ลูก ({totalKva.toLocaleString()} kVA)</span>
+            <span className="hidden sm:inline">&bull; {transformerCount} เครื่อง ({totalKva.toLocaleString()} kVA)</span>
           </div>
         </div>
       </div>

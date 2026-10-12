@@ -139,7 +139,7 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                       ? 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800' 
                       : 'bg-slate-200/80 dark:bg-slate-700/80 text-slate-500'
                   }`}>
-                    {tfCount} ลูก
+                    {tfCount} เครื่อง
                   </span>
 
                   {/* Quick Edit Icon on active tab */}
