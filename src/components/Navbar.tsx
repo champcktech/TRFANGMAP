@@ -25,7 +25,7 @@ import {
   Compass,
   ArrowRight
 } from 'lucide-react';
-import { GoogleSheetConfig, DiagramSheet, Transformer } from '../types';
+import { GoogleSheetConfig, DiagramSheet, Transformer, AnnotationLabel } from '../types';
 
 interface NavbarProps {
   currentView: 'canvas' | 'table' | 'stats';
@@ -52,6 +52,7 @@ interface NavbarProps {
   onSelectSheet?: (sheetId: string) => void;
   onSearchChange: (query: string) => void;
   onSelectTransformer?: (transformer: Transformer, sheetId?: string) => void;
+  onSelectAnnotation?: (annotation: AnnotationLabel, sheetId?: string) => void;
   onThemeToggle: () => void;
   onToggleDraggable: () => void;
   onToggleReadOnly?: () => void;
@@ -83,6 +84,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectSheet,
   onSearchChange,
   onSelectTransformer,
+  onSelectAnnotation,
   onThemeToggle,
   onToggleDraggable,
   onToggleReadOnly,
@@ -124,19 +126,21 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Filter transformers across active sheet and other sheets
+  // Filter transformers and landmarks across active sheet and other sheets
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
 
     const results: {
-      transformer: Transformer;
+      type: 'transformer' | 'landmark';
+      transformer?: Transformer;
+      annotation?: AnnotationLabel;
       sheetId: string;
       sheetName: string;
       isCurrentSheet: boolean;
     }[] = [];
 
-    // Active sheet first
+    // 1. Search transformers in active sheet first
     const currentSheetObj = sheets.find(s => s.id === activeSheetId);
     if (currentSheetObj && currentSheetObj.transformers) {
       currentSheetObj.transformers.forEach(t => {
@@ -148,6 +152,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           (t.poleNo && t.poleNo.toLowerCase().includes(q));
         if (match) {
           results.push({
+            type: 'transformer',
             transformer: t,
             sheetId: currentSheetObj.id,
             sheetName: `${currentSheetObj.sheetNo || ''} ${currentSheetObj.title || ''}`.trim(),
@@ -157,7 +162,25 @@ export const Navbar: React.FC<NavbarProps> = ({
       });
     }
 
-    // Other sheets next
+    // 2. Search landmarks / annotations across all sheets
+    sheets.forEach(s => {
+      if (s.annotations) {
+        s.annotations.forEach(a => {
+          const match = a.text && a.text.toLowerCase().includes(q);
+          if (match) {
+            results.push({
+              type: 'landmark',
+              annotation: a,
+              sheetId: s.id,
+              sheetName: `${s.sheetNo || ''} ${s.title || ''}`.trim(),
+              isCurrentSheet: s.id === activeSheetId
+            });
+          }
+        });
+      }
+    });
+
+    // 3. Search transformers in other sheets
     sheets.forEach(s => {
       if (s.id !== activeSheetId && s.transformers) {
         s.transformers.forEach(t => {
@@ -169,6 +192,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             (t.poleNo && t.poleNo.toLowerCase().includes(q));
           if (match) {
             results.push({
+              type: 'transformer',
               transformer: t,
               sheetId: s.id,
               sheetName: `${s.sheetNo || ''} ${s.title || ''}`.trim(),
@@ -182,11 +206,25 @@ export const Navbar: React.FC<NavbarProps> = ({
     return results.slice(0, 20); // Top 20 results
   }, [searchQuery, sheets, activeSheetId]);
 
-  const handleResultClick = (item: { transformer: Transformer; sheetId: string; isCurrentSheet: boolean }) => {
-    if (onSelectTransformer) {
-      onSelectTransformer(item.transformer, item.sheetId);
-    } else if (!item.isCurrentSheet && onSelectSheet) {
-      onSelectSheet(item.sheetId);
+  const handleResultClick = (item: {
+    type: 'transformer' | 'landmark';
+    transformer?: Transformer;
+    annotation?: AnnotationLabel;
+    sheetId: string;
+    isCurrentSheet: boolean;
+  }) => {
+    if (item.type === 'transformer' && item.transformer) {
+      if (onSelectTransformer) {
+        onSelectTransformer(item.transformer, item.sheetId);
+      } else if (!item.isCurrentSheet && onSelectSheet) {
+        onSelectSheet(item.sheetId);
+      }
+    } else if (item.type === 'landmark' && item.annotation) {
+      if (onSelectAnnotation) {
+        onSelectAnnotation(item.annotation, item.sheetId);
+      } else if (!item.isCurrentSheet && onSelectSheet) {
+        onSelectSheet(item.sheetId);
+      }
     }
     setIsSearchFocused(false);
     setIsMobileSearchOpen(false);
@@ -298,58 +336,117 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             ) : (
               <div className="py-1">
-                {searchResults.map((item) => (
-                  <button
-                    key={`${item.sheetId}-${item.transformer.id}`}
-                    type="button"
-                    onClick={() => handleResultClick(item)}
-                    className="w-full px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-slate-700/60 transition-colors flex items-center justify-between gap-2 cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 text-[10px] font-bold ${
-                        item.transformer.type === 'private'
-                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
-                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
-                      }`}>
-                        ▲
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                            {item.transformer.peaNo}
-                          </span>
-                          <span className="text-xs text-slate-700 dark:text-slate-300 truncate">
-                            {item.transformer.name}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          <span className="font-medium text-blue-600 dark:text-blue-400">
-                            {item.transformer.kva} kVA {item.transformer.phase || '3P'}
-                          </span>
-                          <span>&bull;</span>
-                          <span>{item.transformer.type === 'private' ? 'เฉพาะราย' : 'สาธารณะ'}</span>
-                          {item.transformer.feeder && (
-                            <>
+                {searchResults.map((item, idx) => {
+                  if (item.type === 'landmark' && item.annotation) {
+                    const ann = item.annotation;
+                    const landmarkIcons: Record<string, string> = {
+                      school: '🏫',
+                      temple: '🛕',
+                      hospital: '🏥',
+                      government: '🏛️',
+                      makro: '🔴',
+                      lotus: '🟢',
+                      seven_eleven: '🏪',
+                      road: '🛣️',
+                      location: '📍'
+                    };
+                    const icon = landmarkIcons[ann.type || ''] || '📍';
+                    return (
+                      <button
+                        key={`lm-${item.sheetId}-${ann.id}-${idx}`}
+                        type="button"
+                        onClick={() => handleResultClick(item)}
+                        className="w-full px-3 py-2 text-left hover:bg-amber-50 dark:hover:bg-slate-700/60 transition-colors flex items-center justify-between gap-2 cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-6 h-6 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0 text-sm">
+                            {icon}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400">
+                                {ann.text}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              <span className="font-medium text-amber-600 dark:text-amber-400">
+                                สถานที่สำคัญบนผัง
+                              </span>
                               <span>&bull;</span>
-                              <span className="truncate">{item.transformer.feeder}</span>
-                            </>
-                          )}
+                              <span>{ann.orientation === 'vertical' ? 'แนวตั้ง' : 'แนวนอน'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0 text-right">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                            item.isCurrentSheet
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                          }`}>
+                            {item.isCurrentSheet ? 'หน้านี้' : item.sheetName}
+                          </span>
+                          <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-500 group-hover:translate-x-0.5 transition-all" />
+                        </div>
+                      </button>
+                    );
+                  }
+
+                  if (!item.transformer) return null;
+                  const t = item.transformer;
+                  return (
+                    <button
+                      key={`tf-${item.sheetId}-${t.id}-${idx}`}
+                      type="button"
+                      onClick={() => handleResultClick(item)}
+                      className="w-full px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-slate-700/60 transition-colors flex items-center justify-between gap-2 cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                          t.type === 'private'
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
+                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                        }`}>
+                          ▲
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                              {t.peaNo}
+                            </span>
+                            <span className="text-xs text-slate-700 dark:text-slate-300 truncate">
+                              {t.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            <span className="font-medium text-blue-600 dark:text-blue-400">
+                              {t.kva} kVA {t.phase || '3P'}
+                            </span>
+                            <span>&bull;</span>
+                            <span>{t.type === 'private' ? 'เฉพาะราย' : 'สาธารณะ'}</span>
+                            {t.feeder && (
+                              <>
+                                <span>&bull;</span>
+                                <span className="truncate">{t.feeder}</span>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0 text-right">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                        item.isCurrentSheet
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
-                          : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                      }`}>
-                        {item.isCurrentSheet ? 'หน้านี้' : item.sheetName}
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
-                    </div>
-                  </button>
-                ))}
+                      <div className="flex items-center gap-1.5 shrink-0 text-right">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                          item.isCurrentSheet
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
+                            : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                        }`}>
+                          {item.isCurrentSheet ? 'หน้านี้' : item.sheetName}
+                        </span>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

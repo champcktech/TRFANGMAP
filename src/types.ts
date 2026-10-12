@@ -48,6 +48,21 @@ export interface FeederPath {
   label?: string;
 }
 
+export type AnnotationType = 
+  | 'road' 
+  | 'location' 
+  | 'feeder_title' 
+  | 'terminal'
+  | 'school'        // โรงเรียน
+  | 'temple'        // วัด
+  | 'hospital'      // โรงพยาบาล
+  | 'government'    // สถานที่ราชการ
+  | 'makro'         // แมคโคร
+  | 'lotus'         // โลตัส
+  | 'seven_eleven'; // เซเว่น (7-Eleven)
+
+export type TextPosition = 'right' | 'left' | 'top' | 'bottom';
+
 export interface AnnotationLabel {
   id: string;
   text: string;
@@ -55,7 +70,8 @@ export interface AnnotationLabel {
   x: number;
   y: number;
   orientation?: 'horizontal' | 'vertical';
-  type?: 'road' | 'location' | 'feeder_title' | 'terminal';
+  textPosition?: TextPosition; // ทิศทางการวางข้อความเทียบกับสัญลักษณ์: ขวา, ซ้าย, บน, ล่าง
+  type?: AnnotationType;
   color?: string;
   fontSize?: number;
 }

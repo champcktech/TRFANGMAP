@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Transformer, SwitchNode, FeederPath, AnnotationLabel } from '../types';
+import { Transformer, SwitchNode, FeederPath, AnnotationLabel, AnnotationType } from '../types';
 import { 
   transformDataToLandscape, 
   transformPointToPortrait,
@@ -32,7 +32,8 @@ import {
   ChevronDown,
   Power,
   Type,
-  GripVertical
+  GripVertical,
+  Landmark
 } from 'lucide-react';
 
 interface TransformerCanvasProps {
@@ -67,9 +68,10 @@ interface TransformerCanvasProps {
   onDeleteSwitch?: (id: string) => void;
   onDeleteAnnotation?: (id: string) => void;
   onEditAnnotation?: (ann: AnnotationLabel) => void;
+  onUpdateAnnotation?: (ann: AnnotationLabel) => void;
   onAddTransformerAt: (x: number, y: number) => void;
   onAddSwitchAt?: (x: number, y: number) => void;
-  onAddAnnotationAt?: (x: number, y: number) => void;
+  onAddAnnotationAt?: (x: number, y: number, initialType?: AnnotationType) => void;
 }
 
 export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
@@ -104,6 +106,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   onDeleteSwitch,
   onDeleteAnnotation,
   onEditAnnotation,
+  onUpdateAnnotation,
   onAddTransformerAt,
   onAddSwitchAt,
   onAddAnnotationAt
@@ -143,7 +146,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   const dragMovedRef = useRef<boolean>(false);
   const [hoveredTransformer, setHoveredTransformer] = useState<Transformer | null>(null);
   const [hoveredPathId, setHoveredPathId] = useState<string | null>(null);
-  const [canvasClickMode, setCanvasClickMode] = useState<'select' | 'add' | 'add_switch' | 'add_annotation' | 'edit_line' | 'draw_line'>('select');
+  const [canvasClickMode, setCanvasClickMode] = useState<'select' | 'add' | 'add_switch' | 'add_annotation' | 'add_landmark' | 'edit_line' | 'draw_line'>('select');
+  const [pendingLandmarkType, setPendingLandmarkType] = useState<AnnotationType | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const canvasSizeMode: 'a4_landscape' = 'a4_landscape'; // ล็อคขนาดเท่า A4 แนวนอนเป็นมาตรฐาน
@@ -614,6 +618,13 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         return;
       }
 
+      if (canvasClickMode === 'add_landmark') {
+        onAddAnnotationAt?.(pt.x, pt.y, pendingLandmarkType || undefined);
+        setCanvasClickMode('select');
+        setPendingLandmarkType(null);
+        return;
+      }
+
       if (canvasClickMode === 'draw_line') {
         // Add point to current drawing
         setDrawingPoints(prev => [...prev, coords]);
@@ -736,6 +747,20 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       }
     }
   }, [selectedId, zoom, displayData.transformers]);
+
+  // Center on selected landmark/annotation if searched or selected
+  useEffect(() => {
+    if (selectedAnnotationId) {
+      const selected = displayData.annotations.find(a => a.id === selectedAnnotationId);
+      if (selected && containerRef.current) {
+        const { clientWidth, clientHeight } = containerRef.current;
+        setPan({
+          x: clientWidth / 2 - selected.x * zoom,
+          y: clientHeight / 2 - selected.y * zoom
+        });
+      }
+    }
+  }, [selectedAnnotationId, zoom, displayData.annotations]);
 
   // Color theme definitions
   const themeStyles = {
@@ -1000,13 +1025,14 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   <span>
                     {canvasClickMode === 'add' ? 'วางหม้อแปลง' :
                      canvasClickMode === 'add_switch' ? 'วางสวิตช์' :
-                     canvasClickMode === 'add_annotation' ? 'วางข้อความ' : 'เพิ่มสัญลักษณ์'}
+                     canvasClickMode === 'add_annotation' ? 'วางข้อความ' :
+                     canvasClickMode === 'add_landmark' ? 'วางสัญลักษณ์สถานที่' : 'เพิ่มสัญลักษณ์'}
                   </span>
                   <ChevronDown className="w-3.5 h-3.5 ml-0.5 opacity-80" />
                 </button>
 
                 {isAddMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1.5 w-52 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs">
+                  <div className="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs max-h-96 overflow-y-auto">
                     <button
                       onClick={() => {
                         setCanvasClickMode('add');
@@ -1035,7 +1061,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium"
                     >
                       <Type className="w-4 h-4 text-blue-600" />
-                      <span>🔤 เพิ่มข้อความ / ชื่อถนน / สถานที่</span>
+                      <span>🔤 เพิ่มข้อความ / ชื่อถนน / สายป้อน</span>
                     </button>
                     <button
                       onClick={() => {
@@ -1043,11 +1069,96 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                         setCanvasClickMode('draw_line');
                         setIsAddMenuOpen(false);
                       }}
-                      className="w-full px-3 py-2 text-left hover:bg-purple-50 dark:hover:bg-purple-950/40 flex items-center gap-2 text-purple-700 dark:text-purple-300 font-medium border-t border-slate-100 dark:border-slate-700 mt-1"
+                      className="w-full px-3 py-2 text-left hover:bg-purple-50 dark:hover:bg-purple-950/40 flex items-center gap-2 text-purple-700 dark:text-purple-300 font-medium"
                     >
                       <PenTool className="w-4 h-4 text-purple-600" />
                       <span>🖊️ วาดเส้นวงจรใหม่ (Pen Tool)</span>
                     </button>
+
+                    {/* Landmarks Category */}
+                    <div className="border-t border-slate-100 dark:border-slate-700 my-1 pt-1">
+                      <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                        <Landmark className="w-3 h-3 text-blue-500" />
+                        <span>สัญลักษณ์สถานที่สำคัญ (Landmarks)</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setPendingLandmarkType('school');
+                          setCanvasClickMode('add_landmark');
+                          setIsAddMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-1.5 text-left hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
+                      >
+                        <span className="text-sm">🏫</span>
+                        <span className="font-medium">โรงเรียน (School)</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPendingLandmarkType('temple');
+                          setCanvasClickMode('add_landmark');
+                          setIsAddMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-1.5 text-left hover:bg-amber-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
+                      >
+                        <span className="text-sm">🛕</span>
+                        <span className="font-medium">วัด (Wat / Temple)</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPendingLandmarkType('hospital');
+                          setCanvasClickMode('add_landmark');
+                          setIsAddMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-1.5 text-left hover:bg-red-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
+                      >
+                        <span className="text-sm">🏥</span>
+                        <span className="font-medium">โรงพยาบาล (Hospital)</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPendingLandmarkType('government');
+                          setCanvasClickMode('add_landmark');
+                          setIsAddMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-1.5 text-left hover:bg-sky-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
+                      >
+                        <span className="text-sm">🏛️</span>
+                        <span className="font-medium">สถานที่ราชการ (Govt Office)</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPendingLandmarkType('makro');
+                          setCanvasClickMode('add_landmark');
+                          setIsAddMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-1.5 text-left hover:bg-rose-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
+                      >
+                        <span className="text-sm">🔴</span>
+                        <span className="font-medium">แมคโคร (Makro)</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPendingLandmarkType('lotus');
+                          setCanvasClickMode('add_landmark');
+                          setIsAddMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-1.5 text-left hover:bg-emerald-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
+                      >
+                        <span className="text-sm">🟢</span>
+                        <span className="font-medium">โลตัส (Lotus's)</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPendingLandmarkType('seven_eleven');
+                          setCanvasClickMode('add_landmark');
+                          setIsAddMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-1.5 text-left hover:bg-orange-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
+                      >
+                        <span className="text-sm">🏪</span>
+                        <span className="font-medium">เซเว่น (7-Eleven)</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1109,6 +1220,31 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           <button
             onClick={() => setCanvasClickMode('select')}
             className="p-1 hover:bg-white/20 rounded-lg text-white transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Adding Landmark Banner */}
+      {canvasClickMode === 'add_landmark' && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-indigo-600/95 text-white backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-2xl border border-indigo-400 flex items-center gap-3 animate-in fade-in slide-in-from-top-3 duration-200 text-xs">
+          <Landmark className="w-4 h-4 text-indigo-200 shrink-0" />
+          <span><b>โหมดเพิ่มสัญลักษณ์ {
+            pendingLandmarkType === 'school' ? '🏫 โรงเรียน' :
+            pendingLandmarkType === 'temple' ? '🛕 วัด' :
+            pendingLandmarkType === 'hospital' ? '🏥 โรงพยาบาล' :
+            pendingLandmarkType === 'government' ? '🏛️ สถานที่ราชการ' :
+            pendingLandmarkType === 'makro' ? '🔴 แมคโคร' :
+            pendingLandmarkType === 'lotus' ? '🟢 โลตัส' :
+            pendingLandmarkType === 'seven_eleven' ? '🏪 เซเว่น (7-Eleven)' : 'สถานที่สำคัญ'
+          }:</b> คลิกบนผังตรงตำแหน่งที่ต้องการวาง</span>
+          <button
+            onClick={() => {
+              setCanvasClickMode('select');
+              setPendingLandmarkType(null);
+            }}
+            className="p-1 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -1580,25 +1716,86 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             const curX = isBeingDragged ? draggingItem.currentX : label.x;
             const curY = isBeingDragged ? draggingItem.currentY : label.y;
 
-            // Compute hit-box bounds according to annotation type
-            let hitW = Math.max(80, (label.text?.length || 4) * 14 + 24);
+            const isLandmark = [
+              'school', 'temple', 'hospital', 'government', 'makro', 'lotus', 'seven_eleven'
+            ].includes(label.type || '');
+
+            const textPos: 'right' | 'left' | 'top' | 'bottom' = label.textPosition || (label.orientation === 'vertical' ? 'bottom' : 'right');
+            const fs = label.fontSize || (isLandmark ? 13 : 14);
+            const textLen = label.text?.length || 4;
+
+            // Compute hit-box bounds and placement according to text direction
+            let hitW = Math.max(80, textLen * 14 + 24);
             let hitH = 32;
             let hitX = -hitW / 2;
             let hitY = -hitH / 2;
+            let iconX = 0;
+            let iconY = 0;
+            let textX = 0;
+            let textY = 0;
+            let textAnchor: 'start' | 'middle' | 'end' = 'start';
+            let dominantBaseline: 'middle' | 'hanging' | 'auto' = 'middle';
 
-            if (label.type === 'feeder_title') {
+            if (isLandmark) {
+              const textWidth = Math.max(28, textLen * (fs * 0.9));
+              if (textPos === 'right') {
+                hitW = Math.max(92, textWidth + 44);
+                hitH = Math.max(34, fs + 18);
+                hitX = -hitW / 2;
+                hitY = -hitH / 2;
+                iconX = hitX + 17;
+                iconY = 0;
+                textX = hitX + 34;
+                textY = 1;
+                textAnchor = 'start';
+                dominantBaseline = 'middle';
+              } else if (textPos === 'left') {
+                hitW = Math.max(92, textWidth + 44);
+                hitH = Math.max(34, fs + 18);
+                hitX = -hitW / 2;
+                hitY = -hitH / 2;
+                iconX = hitX + hitW - 17;
+                iconY = 0;
+                textX = hitX + hitW - 34;
+                textY = 1;
+                textAnchor = 'end';
+                dominantBaseline = 'middle';
+              } else if (textPos === 'bottom') {
+                hitW = Math.max(64, textWidth + 24);
+                hitH = 50 + Math.max(0, fs - 13);
+                hitX = -hitW / 2;
+                hitY = -hitH / 2;
+                iconX = 0;
+                iconY = hitY + 16;
+                textX = 0;
+                textY = hitY + 37;
+                textAnchor = 'middle';
+                dominantBaseline = 'middle';
+              } else if (textPos === 'top') {
+                hitW = Math.max(64, textWidth + 24);
+                hitH = 50 + Math.max(0, fs - 13);
+                hitX = -hitW / 2;
+                hitY = -hitH / 2;
+                textX = 0;
+                textY = hitY + 15;
+                iconX = 0;
+                iconY = hitY + 35;
+                textAnchor = 'middle';
+                dominantBaseline = 'middle';
+              }
+            } else if (label.type === 'feeder_title') {
               hitW = 260;
               hitH = 70;
               hitX = -130;
               hitY = -35;
             } else if (label.type === 'road') {
-              if (isVertical) {
+              if (isVertical || textPos === 'top' || textPos === 'bottom') {
                 hitW = 36;
-                hitH = Math.max(80, (label.text?.length || 4) * 20);
+                hitH = Math.max(80, textLen * 20);
                 hitX = -18;
                 hitY = 0;
               } else {
-                hitW = Math.max(120, (label.text?.length || 4) * 16 + 30);
+                hitW = Math.max(120, textLen * 16 + 30);
                 hitH = 36;
                 hitX = -hitW / 2;
                 hitY = -18;
@@ -1722,9 +1919,152 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       {label.text.replace('(1) ผังหม้อแปลง ', '').trim() || 'ไลน์สวนดอก'}
                     </text>
                   </g>
+                ) : isLandmark ? (
+                  <g>
+                    <rect
+                      x={hitX}
+                      y={hitY}
+                      width={hitW}
+                      height={hitH}
+                      rx="7"
+                      fill={isTextBgTransparent ? 'none' : (
+                        label.type === 'school' ? (theme === 'blueprint' ? '#172554' : '#eff6ff') :
+                        label.type === 'temple' ? (theme === 'blueprint' ? '#292524' : '#fffbeb') :
+                        label.type === 'hospital' ? (theme === 'blueprint' ? '#450a0a' : '#fef2f2') :
+                        label.type === 'government' ? (theme === 'blueprint' ? '#082f49' : '#f0f9ff') :
+                        label.type === 'makro' ? (theme === 'blueprint' ? '#4c0519' : '#fff1f2') :
+                        label.type === 'lotus' ? (theme === 'blueprint' ? '#064e3b' : '#ecfdf5') :
+                        /* seven_eleven */ (theme === 'blueprint' ? '#431407' : '#fff7ed')
+                      )}
+                      fillOpacity="0.95"
+                      stroke={label.color || (
+                        label.type === 'school' ? '#2563eb' :
+                        label.type === 'temple' ? '#d97706' :
+                        label.type === 'hospital' ? '#dc2626' :
+                        label.type === 'government' ? '#0284c7' :
+                        label.type === 'makro' ? '#e11d48' :
+                        label.type === 'lotus' ? '#059669' :
+                        '#ea580c'
+                      )}
+                      strokeWidth="1.5"
+                    />
+
+                    {/* Landmark Specific Icons */}
+                    {label.type === 'school' && (
+                      <g>
+                        <circle cx={iconX} cy={iconY} r={11} fill={label.color || '#2563eb'} />
+                        <polygon points={`${iconX},${iconY - 6} ${iconX - 6},${iconY - 1} ${iconX + 6},${iconY - 1}`} fill="#ffffff" />
+                        <rect x={iconX - 5} y={iconY - 1} width="10" height="7" fill="#ffffff" />
+                        <rect x={iconX - 2} y={iconY + 2} width="4" height="4" fill={label.color || '#2563eb'} />
+                        <line x1={iconX} y1={iconY - 6} x2={iconX} y2={iconY - 9} stroke="#ffffff" strokeWidth="1" />
+                        <polygon points={`${iconX},${iconY - 9} ${iconX + 4},${iconY - 7.5} ${iconX},${iconY - 6}`} fill="#fef08a" />
+                      </g>
+                    )}
+
+                    {label.type === 'temple' && (
+                      <g>
+                        <circle cx={iconX} cy={iconY} r={11} fill={label.color || '#d97706'} />
+                        <path
+                          d={`M ${iconX} ${iconY - 8} Q ${iconX - 1} ${iconY - 4} ${iconX - 5} ${iconY - 1} Q ${iconX} ${iconY - 2} ${iconX + 5} ${iconY - 1} Q ${iconX + 1} ${iconY - 4} ${iconX} ${iconY - 8} Z`}
+                          fill="#ffffff"
+                        />
+                        <rect x={iconX - 4} y={iconY} width="8" height="6" fill="#ffffff" />
+                        <rect x={iconX - 2} y={iconY + 2} width="4" height="4" rx="1" fill={label.color || '#d97706'} />
+                      </g>
+                    )}
+
+                    {label.type === 'hospital' && (
+                      <g>
+                        <circle cx={iconX} cy={iconY} r={11} fill={label.color || '#dc2626'} />
+                        <rect x={iconX - 5} y={iconY - 2.5} width="10" height="5" rx="1" fill="#ffffff" />
+                        <rect x={iconX - 2.5} y={iconY - 5} width="5" height="10" rx="1" fill="#ffffff" />
+                      </g>
+                    )}
+
+                    {label.type === 'government' && (
+                      <g>
+                        <circle cx={iconX} cy={iconY} r={11} fill={label.color || '#0284c7'} />
+                        <polygon points={`${iconX},${iconY - 6.5} ${iconX - 6},${iconY - 2.5} ${iconX + 6},${iconY - 2.5}`} fill="#ffffff" />
+                        <rect x={iconX - 5} y={iconY - 1.5} width="2" height="6" fill="#ffffff" />
+                        <rect x={iconX - 1} y={iconY - 1.5} width="2" height="6" fill="#ffffff" />
+                        <rect x={iconX + 3} y={iconY - 1.5} width="2" height="6" fill="#ffffff" />
+                        <rect x={iconX - 6.5} y={iconY + 4.5} width="13" height="1.5" rx="0.5" fill="#ffffff" />
+                      </g>
+                    )}
+
+                    {label.type === 'makro' && (
+                      <g>
+                        <rect x={iconX - 11} y={iconY - 11} width="22" height="22" rx="5" fill={label.color || '#e11d48'} />
+                        <text
+                          x={iconX}
+                          y={iconY + 1}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontSize="12"
+                          fontWeight="900"
+                          fontFamily="sans-serif"
+                          fill="#ffffff"
+                        >
+                          M
+                        </text>
+                      </g>
+                    )}
+
+                    {label.type === 'lotus' && (
+                      <g>
+                        <circle cx={iconX} cy={iconY} r={11} fill={label.color || '#059669'} />
+                        <path
+                          d={`M ${iconX} ${iconY - 7} C ${iconX + 5} ${iconY - 3}, ${iconX + 5} ${iconY + 3}, ${iconX} ${iconY + 6} C ${iconX - 5} ${iconY + 3}, ${iconX - 5} ${iconY - 3}, ${iconX} ${iconY - 7} Z`}
+                          fill="#ffffff"
+                        />
+                        <circle cx={iconX} cy={iconY} r={2} fill={label.color || '#059669'} />
+                      </g>
+                    )}
+
+                    {label.type === 'seven_eleven' && (
+                      <g>
+                        <rect x={iconX - 11} y={iconY - 11} width="22" height="22" rx="4" fill="#ffffff" stroke="#16a34a" strokeWidth="1" />
+                        <rect x={iconX - 10} y={iconY - 10} width="20" height="3" fill="#16a34a" />
+                        <rect x={iconX - 10} y={iconY + 6} width="20" height="3" fill="#16a34a" />
+                        <text
+                          x={iconX}
+                          y={iconY}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontSize="13"
+                          fontWeight="900"
+                          fontFamily="sans-serif"
+                          fill="#ea580c"
+                        >
+                          7
+                        </text>
+                      </g>
+                    )}
+
+                    {/* Landmark Text according to chosen textPosition direction */}
+                    <text
+                      x={textX}
+                      y={textY}
+                      fill={label.color || (
+                        label.type === 'school' ? '#1d4ed8' :
+                        label.type === 'temple' ? '#b45309' :
+                        label.type === 'hospital' ? '#dc2626' :
+                        label.type === 'government' ? '#0284c7' :
+                        label.type === 'makro' ? '#e11d48' :
+                        label.type === 'lotus' ? '#059669' :
+                        '#ea580c'
+                      )}
+                      fontSize={fs}
+                      fontWeight="bold"
+                      dominantBaseline={dominantBaseline}
+                      textAnchor={textAnchor}
+                    >
+                      {label.text}
+                    </text>
+                  </g>
                 ) : label.type === 'road' ? (
                   <g>
-                    {isVertical ? (
+                    {isVertical || textPos === 'top' || textPos === 'bottom' ? (
                       <text
                         x="0"
                         y="0"
@@ -1774,6 +2114,65 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   >
                     {label.text}
                   </text>
+                )}
+
+                {/* Quick On-Canvas Direction Switcher for Selected Landmark/Annotation */}
+                {isSelected && !isReadOnly && onUpdateAnnotation && (
+                  <g transform={`translate(0, ${hitY - 26})`} className="pointer-events-auto">
+                    <rect
+                      x="-86"
+                      y="-11"
+                      width="172"
+                      height="22"
+                      rx="6"
+                      fill="#0f172a"
+                      fillOpacity="0.95"
+                      stroke="#3b82f6"
+                      strokeWidth="1.2"
+                    />
+                    {[
+                      { id: 'left' as const, label: '👈 ซ้าย', x: -64, w: 38 },
+                      { id: 'right' as const, label: '👉 ขวา', x: -22, w: 38 },
+                      { id: 'top' as const, label: '☝️ บน', x: 20, w: 32 },
+                      { id: 'bottom' as const, label: '👇 ล่าง', x: 55, w: 32 },
+                    ].map(b => {
+                      const active = textPos === b.id;
+                      return (
+                        <g
+                          key={b.id}
+                          className="cursor-pointer hover:opacity-80"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const original = annotations.find(orig => orig.id === label.id) || label;
+                            onUpdateAnnotation({
+                              ...original,
+                              textPosition: b.id,
+                              orientation: (b.id === 'top' || b.id === 'bottom') ? 'vertical' : 'horizontal'
+                            });
+                          }}
+                        >
+                          <rect
+                            x={b.x - b.w / 2}
+                            y="-9"
+                            width={b.w}
+                            height="18"
+                            rx="4"
+                            fill={active ? '#2563eb' : '#334155'}
+                          />
+                          <text
+                            x={b.x}
+                            y="3"
+                            fill="#ffffff"
+                            fontSize="9"
+                            fontWeight="bold"
+                            textAnchor="middle"
+                          >
+                            {b.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </g>
                 )}
               </g>
             );

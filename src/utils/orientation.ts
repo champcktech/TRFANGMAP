@@ -122,7 +122,8 @@ export function transformDataToLandscape(
       ...a,
       x,
       y,
-      orientation: a.orientation || 'horizontal'
+      orientation: a.orientation || 'horizontal',
+      textPosition: a.textPosition || (a.orientation === 'vertical' ? 'bottom' : 'right')
     };
   });
 

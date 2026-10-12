@@ -325,6 +325,77 @@ export const INITIAL_ANNOTATIONS: AnnotationLabel[] = [
     type: 'terminal',
     color: '#2563eb',
     fontSize: 14
+  },
+  // สถานที่สำคัญ (Landmarks)
+  {
+    id: 'lbl-landmark-govt',
+    text: 'ที่ว่าการอำเภอฝาง',
+    x: 190,
+    y: 380,
+    orientation: 'horizontal',
+    type: 'government',
+    color: '#0284c7',
+    fontSize: 13
+  },
+  {
+    id: 'lbl-landmark-school',
+    text: 'รร.ฝางชนูปถัมภ์',
+    x: 340,
+    y: 380,
+    orientation: 'horizontal',
+    type: 'school',
+    color: '#1d4ed8',
+    fontSize: 13
+  },
+  {
+    id: 'lbl-landmark-hospital',
+    text: 'รพ.ฝาง',
+    x: 780,
+    y: 380,
+    orientation: 'horizontal',
+    type: 'hospital',
+    color: '#dc2626',
+    fontSize: 13
+  },
+  {
+    id: 'lbl-landmark-lotus',
+    text: 'โลตัส ฝาง',
+    x: 260,
+    y: 520,
+    orientation: 'horizontal',
+    type: 'lotus',
+    color: '#059669',
+    fontSize: 13
+  },
+  {
+    id: 'lbl-landmark-711',
+    text: '7-Eleven สาขาสวนดอก',
+    x: 480,
+    y: 520,
+    orientation: 'horizontal',
+    type: 'seven_eleven',
+    color: '#ea580c',
+    fontSize: 13
+  },
+  {
+    id: 'lbl-landmark-temple',
+    text: 'วัดสวนดอก',
+    x: 640,
+    y: 520,
+    orientation: 'horizontal',
+    type: 'temple',
+    color: '#d97706',
+    fontSize: 13
+  },
+  {
+    id: 'lbl-landmark-makro',
+    text: 'แมคโคร ฝาง',
+    x: 880,
+    y: 480,
+    orientation: 'horizontal',
+    type: 'makro',
+    color: '#e11d48',
+    fontSize: 13
   }
 ];
 

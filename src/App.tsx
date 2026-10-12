@@ -4,6 +4,7 @@ import {
   SwitchNode, 
   FeederPath, 
   AnnotationLabel, 
+  AnnotationType,
   GoogleSheetConfig,
   DiagramSheet
 } from './types';
@@ -569,6 +570,18 @@ export default function App() {
     showToast(`ไปยังหม้อแปลง PEA: ${transformer.peaNo} (${transformer.name})`, 'info');
   };
 
+  const handleSelectAnnotationFromSearch = (ann: AnnotationLabel, targetSheetId?: string) => {
+    if (targetSheetId && targetSheetId !== activeSheetId) {
+      setActiveSheetId(targetSheetId);
+    }
+    setCurrentView('canvas');
+    setSelectedAnnotation(ann);
+    setSelectedTransformer(null);
+    setSelectedPath(null);
+    setSelectedSwitch(null);
+    showToast(`ไปยังสถานที่: ${ann.text}`, 'info');
+  };
+
   const handleOpenNewSheetModal = () => {
     setEditingSheet(null);
     setIsSheetModalOpen(true);
@@ -838,9 +851,41 @@ export default function App() {
     setSelectedAnnotation(ann);
   }, [isReadOnly, annotations, setAnnotations, showToast]);
 
-  const handleOpenAddAnnotationModal = (pos?: { x: number; y: number }) => {
+  const handleOpenAddAnnotationModal = (pos?: { x: number; y: number }, initialType?: AnnotationType) => {
     if (isReadOnly) return;
-    setEditingAnnotation(null);
+    const defaultColors: Record<string, string> = {
+      school: '#1d4ed8',
+      temple: '#d97706',
+      hospital: '#dc2626',
+      government: '#0284c7',
+      makro: '#e11d48',
+      lotus: '#059669',
+      seven_eleven: '#ea580c'
+    };
+    const defaultTexts: Record<string, string> = {
+      school: 'รร.ฝางชนูปถัมภ์',
+      temple: 'วัดสวนดอก',
+      hospital: 'รพ.ฝาง',
+      government: 'ที่ว่าการอำเภอฝาง',
+      makro: 'แมคโคร ฝาง',
+      lotus: 'โลตัส ฝาง',
+      seven_eleven: '7-Eleven สาขาสวนดอก'
+    };
+
+    if (initialType) {
+      setEditingAnnotation({
+        id: `ann-${Date.now()}`,
+        text: defaultTexts[initialType] || '',
+        type: initialType,
+        color: defaultColors[initialType] || '#1d4ed8',
+        x: pos?.x || 400,
+        y: pos?.y || 400,
+        orientation: 'horizontal',
+        fontSize: 13
+      });
+    } else {
+      setEditingAnnotation(null);
+    }
     setNewAnnotationDefaultPos(pos || { x: 400, y: 400 });
     setIsAnnotationModalOpen(true);
   };
@@ -984,6 +1029,7 @@ export default function App() {
         onSelectSheet={handleSelectSheet}
         onSearchChange={setSearchQuery}
         onSelectTransformer={handleSelectTransformerFromSearch}
+        onSelectAnnotation={handleSelectAnnotationFromSearch}
         onThemeToggle={handleThemeToggle}
         onToggleDraggable={handleToggleDraggable}
         onToggleReadOnly={handleToggleReadOnly}
@@ -1071,8 +1117,9 @@ export default function App() {
                 setEditingAnnotation(ann);
                 setIsAnnotationModalOpen(true);
               }}
+              onUpdateAnnotation={isReadOnly ? undefined : handleUpdateAnnotation}
               onAddSwitchAt={isReadOnly ? undefined : (x, y) => handleOpenAddSwitchModal({ x, y })}
-              onAddAnnotationAt={isReadOnly ? undefined : (x, y) => handleOpenAddAnnotationModal({ x, y })}
+              onAddAnnotationAt={isReadOnly ? undefined : (x, y, initialType) => handleOpenAddAnnotationModal({ x, y }, initialType)}
               onEditTransformer={isReadOnly ? () => {} : handleEditTransformer}
               onDeleteTransformer={isReadOnly ? () => {} : handleDeleteTransformer}
               onAddTransformerAt={isReadOnly ? () => {} : (x, y) => handleOpenAddModal({ x, y })}
