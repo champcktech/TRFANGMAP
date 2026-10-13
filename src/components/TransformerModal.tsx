@@ -327,7 +327,7 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
                   formData.type === 'public'
-                    ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-200'
+                    ? 'border-purple-500 bg-purple-50/60 dark:bg-purple-900/40 text-purple-900 dark:text-purple-200 ring-2 ring-purple-500/20 shadow-xs'
                     : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}>
                   <input
@@ -342,14 +342,14 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                     <polygon points="9,2 16,14 2,14" fill="#ffffff" stroke="#0f172a" strokeWidth="2" />
                   </svg>
                   <div className="text-xs">
-                    <div className="font-bold">จำหน่ายทั่วไป</div>
-                    <div className="text-[10px] text-slate-500">สามเหลี่ยมโปร่ง</div>
+                    <div className="font-bold text-purple-700 dark:text-purple-300">กฟภ. (จำหน่ายทั่วไป)</div>
+                    <div className="text-[10px] text-slate-500">สามเหลี่ยมโปร่ง (ขอบดำ)</div>
                   </div>
                 </label>
 
                 <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
                   formData.type === 'private'
-                    ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-200'
+                    ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-900/40 text-blue-900 dark:text-blue-200 ring-2 ring-blue-500/20 shadow-xs'
                     : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}>
                   <input
@@ -364,8 +364,8 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                     <polygon points="9,2 16,14 2,14" fill="#0f172a" stroke="#0f172a" strokeWidth="2" />
                   </svg>
                   <div className="text-xs">
-                    <div className="font-bold">เฉพาะราย</div>
-                    <div className="text-[10px] text-slate-500">สามเหลี่ยมทึบ</div>
+                    <div className="font-bold text-blue-700 dark:text-blue-300">ผู้ใช้ไฟ (เฉพาะราย)</div>
+                    <div className="text-[10px] text-slate-500">สามเหลี่ยมทึบ (ขอบดำ)</div>
                   </div>
                 </label>
               </div>
@@ -464,7 +464,7 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                   <polygon
                     points="12,3 20,17 4,17"
                     fill={formData.type === 'private' ? '#0f172a' : '#ffffff'}
-                    stroke={formData.type === 'private' && (formData.orientation === 'top' || !formData.orientation) ? '#2563eb' : '#0f172a'}
+                    stroke="#0f172a"
                     strokeWidth="2"
                     strokeLinejoin="round"
                   />
@@ -490,7 +490,7 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                   <polygon
                     points="12,21 20,7 4,7"
                     fill={formData.type === 'private' ? '#0f172a' : '#ffffff'}
-                    stroke={formData.type === 'private' && formData.orientation === 'bottom' ? '#2563eb' : '#0f172a'}
+                    stroke="#0f172a"
                     strokeWidth="2"
                     strokeLinejoin="round"
                   />
@@ -516,7 +516,7 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                   <polygon
                     points="3,12 17,4 17,20"
                     fill={formData.type === 'private' ? '#0f172a' : '#ffffff'}
-                    stroke={formData.type === 'private' && formData.orientation === 'left' ? '#2563eb' : '#0f172a'}
+                    stroke="#0f172a"
                     strokeWidth="2"
                     strokeLinejoin="round"
                   />
@@ -542,7 +542,7 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                   <polygon
                     points="21,12 7,4 7,20"
                     fill={formData.type === 'private' ? '#0f172a' : '#ffffff'}
-                    stroke={formData.type === 'private' && formData.orientation === 'right' ? '#2563eb' : '#0f172a'}
+                    stroke="#0f172a"
                     strokeWidth="2"
                     strokeLinejoin="round"
                   />
@@ -698,7 +698,7 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                             stroke="#94a3b8"
                             strokeWidth="1"
                           />
-                          <text x={0} y={11} fontSize="11" fontWeight="800" fill={isPriv ? '#9333ea' : '#2563eb'} textAnchor={tAnchor}>
+                          <text x={0} y={11} fontSize="11" fontWeight="800" fill={isPriv ? '#2563eb' : '#9333ea'} textAnchor={tAnchor}>
                             {formData.kva || 50} kVA
                           </text>
                           <text x={0} y={23} fontSize="10" fontWeight="700" fontFamily="monospace" fill="#334155" textAnchor={tAnchor}>

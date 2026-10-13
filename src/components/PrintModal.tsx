@@ -346,7 +346,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                 พิมพ์และส่งออกผังวงจร (Single-Line Diagram)
               </h3>
               <p className="text-xs text-slate-500">
-                {sheetNo} {sheetTitle} • {transformerCount} หม้อแปลง ({totalKva.toLocaleString()} kVA)
+                {sheetNo} {sheetTitle} • {transformerCount} เครื่อง ({totalKva.toLocaleString()} kVA)
               </p>
             </div>
           </div>

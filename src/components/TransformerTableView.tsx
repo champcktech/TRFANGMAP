@@ -160,8 +160,8 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
             className="px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200"
           >
             <option value="all">ทุกประเภทหม้อแปลง</option>
-            <option value="public">ทั่วไป (สามเหลี่ยมโปร่ง)</option>
-            <option value="private">เฉพาะราย (สามเหลี่ยมทึบ)</option>
+            <option value="public">กฟภ. (สามเหลี่ยมโปร่ง)</option>
+            <option value="private">ผู้ใช้ไฟ (สามเหลี่ยมทึบ)</option>
           </select>
 
           {/* kVA Filter */}
@@ -357,10 +357,10 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
                             strokeWidth="2"
                           />
                         </svg>
-                        <span className={`text-[11px] font-medium ${
-                          t.type === 'private' ? 'text-purple-700 dark:text-purple-300' : 'text-slate-600 dark:text-slate-300'
+                        <span className={`text-[11px] font-semibold ${
+                          t.type === 'private' ? 'text-blue-700 dark:text-blue-300' : 'text-purple-700 dark:text-purple-300'
                         }`}>
-                          {t.type === 'private' ? 'เฉพาะราย' : 'ทั่วไป'}
+                          {t.type === 'private' ? 'ผู้ใช้ไฟ (เฉพาะราย)' : 'กฟภ. (จำหน่ายทั่วไป)'}
                         </span>
                       </div>
                     </td>

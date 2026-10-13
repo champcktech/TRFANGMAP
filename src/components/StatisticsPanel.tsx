@@ -105,18 +105,18 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
           </div>
         </div>
 
-        {/* Public Transformers */}
+        {/* Public Transformers (กฟภ.) */}
         <div 
           onClick={() => onSelectTypeFilter?.('public')}
-          className="p-5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-blue-500 transition-colors"
+          className="p-5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-purple-500 transition-colors"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold">จำหน่ายทั่วไป (Public)</span>
+            <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">กฟภ. (จำหน่ายทั่วไป)</span>
             <svg width="20" height="18" viewBox="0 0 18 16">
-              <polygon points="9,2 16,14 2,14" fill="#ffffff" stroke="#2563eb" strokeWidth="2" />
+              <polygon points="9,2 16,14 2,14" fill="#ffffff" stroke="#0f172a" strokeWidth="2" />
             </svg>
           </div>
-          <div className="text-3xl font-extrabold text-blue-600">
+          <div className="text-3xl font-extrabold text-purple-600 dark:text-purple-400">
             {publicCount}
             <span className="text-sm font-normal text-slate-500 ml-1">เครื่อง</span>
           </div>
@@ -125,18 +125,18 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
           </div>
         </div>
 
-        {/* Private Transformers */}
+        {/* Private Transformers (ผู้ใช้ไฟ) */}
         <div 
           onClick={() => onSelectTypeFilter?.('private')}
-          className="p-5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-purple-500 transition-colors"
+          className="p-5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-blue-500 transition-colors"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold">เฉพาะราย (Private)</span>
+            <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">ผู้ใช้ไฟ (เฉพาะราย)</span>
             <svg width="20" height="18" viewBox="0 0 18 16">
               <polygon points="9,2 16,14 2,14" fill="#0f172a" stroke="#0f172a" strokeWidth="2" />
             </svg>
           </div>
-          <div className="text-3xl font-extrabold text-purple-600">
+          <div className="text-3xl font-extrabold text-blue-600 dark:text-blue-400">
             {privateCount}
             <span className="text-sm font-normal text-slate-500 ml-1">เครื่อง</span>
           </div>

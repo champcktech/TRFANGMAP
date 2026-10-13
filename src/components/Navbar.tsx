@@ -404,8 +404,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <div className="flex items-center gap-2 min-w-0">
                         <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 text-[10px] font-bold ${
                           t.type === 'private'
-                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
-                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                            : 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
                         }`}>
                           ▲
                         </div>
@@ -419,11 +419,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                            <span className="font-medium text-blue-600 dark:text-blue-400">
+                            <span className={`font-medium ${t.type === 'private' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'}`}>
                               {t.kva} kVA {t.phase || '3P'}
                             </span>
                             <span>&bull;</span>
-                            <span>{t.type === 'private' ? 'เฉพาะราย' : 'สาธารณะ'}</span>
+                            <span>{t.type === 'private' ? 'ผู้ใช้ไฟ (เฉพาะราย)' : 'กฟภ. (จำหน่ายทั่วไป)'}</span>
                             {t.feeder && (
                               <>
                                 <span>&bull;</span>

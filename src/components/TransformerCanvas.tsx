@@ -114,6 +114,10 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState<number>(1);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 40, y: 20 });
+  const panRef = useRef(pan);
+  panRef.current = pan;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
   const [isPanning, setIsPanning] = useState(false);
   const [startPan, setStartPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -420,9 +424,47 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     };
   }, [isPanning, draggingItem, draggingVertex, startPan, zoom, feederPaths, onUpdateTransformerPosition, onUpdateSwitchPosition, onUpdateAnnotationPosition, onUpdateFeederPath]);
 
-  // Zoom handlers
-  const handleZoomIn = () => setZoom(z => Math.min(z * 1.2, 3.5));
-  const handleZoomOut = () => setZoom(z => Math.max(z / 1.2, 0.4));
+  // Zoom handlers (Centered on viewport)
+  const handleZoomIn = () => {
+    if (!containerRef.current) {
+      setZoom(z => Math.min(z * 1.2, 4.0));
+      return;
+    }
+    const { clientWidth, clientHeight } = containerRef.current;
+    const centerX = clientWidth / 2;
+    const centerY = clientHeight / 2;
+    const currentZoom = zoomRef.current;
+    const currentPan = panRef.current;
+    const newZoom = Math.min(currentZoom * 1.2, 4.0);
+    const canvasX = (centerX - currentPan.x) / currentZoom;
+    const canvasY = (centerY - currentPan.y) / currentZoom;
+    setZoom(newZoom);
+    setPan({
+      x: centerX - canvasX * newZoom,
+      y: centerY - canvasY * newZoom
+    });
+  };
+
+  const handleZoomOut = () => {
+    if (!containerRef.current) {
+      setZoom(z => Math.max(z / 1.2, 0.15));
+      return;
+    }
+    const { clientWidth, clientHeight } = containerRef.current;
+    const centerX = clientWidth / 2;
+    const centerY = clientHeight / 2;
+    const currentZoom = zoomRef.current;
+    const currentPan = panRef.current;
+    const newZoom = Math.max(currentZoom / 1.2, 0.15);
+    const canvasX = (centerX - currentPan.x) / currentZoom;
+    const canvasY = (centerY - currentPan.y) / currentZoom;
+    setZoom(newZoom);
+    setPan({
+      x: centerX - canvasX * newZoom,
+      y: centerY - canvasY * newZoom
+    });
+  };
+
   const handleResetZoom = () => {
     handleFitToScreen();
   };
@@ -563,19 +605,44 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     return () => clearTimeout(timer);
   }, [sheetId, transformers.length, canvasOrientation, handleFitToScreen]);
 
-  // Mouse wheel zoom & pan
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
+  // ซูมผังวงจรโดยใช้ลูกกลิ้งเม้าส์ (Mouse Wheel Zoom) โดยใช้ตำแหน่งเคอร์เซอร์เป็นจุดศูนย์กลางการซูม
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onNativeWheel = (e: WheelEvent) => {
+      // ป้องกันหน้าเว็บเลื่อนหรือดีด
       e.preventDefault();
-      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      setZoom(z => Math.min(Math.max(z * zoomFactor, 0.4), 3.5));
-    } else {
-      setPan(p => ({
-        x: p.x - e.deltaX * 0.8,
-        y: p.y - e.deltaY * 0.8
-      }));
-    }
-  };
+
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const currentZoom = zoomRef.current;
+      const currentPan = panRef.current;
+
+      // หมุนลูกกลิ้งขึ้น (deltaY < 0) = ซูมเข้า | หมุนลูกกลิ้งลง (deltaY > 0) = ซูมออก
+      const zoomFactor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
+      const newZoom = Math.min(Math.max(currentZoom * zoomFactor, 0.15), 4.5);
+
+      if (Math.abs(newZoom - currentZoom) < 0.0001) return;
+
+      // ตรึงตำแหน่งจุดบนผังที่ชี้ด้วยเมาส์ให้อยู่ที่เดิมขณะซูม
+      const canvasX = (mouseX - currentPan.x) / currentZoom;
+      const canvasY = (mouseY - currentPan.y) / currentZoom;
+
+      const newPanX = mouseX - canvasX * newZoom;
+      const newPanY = mouseY - canvasY * newZoom;
+
+      setZoom(newZoom);
+      setPan({ x: newPanX, y: newPanY });
+    };
+
+    container.addEventListener('wheel', onNativeWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', onNativeWheel);
+    };
+  }, []);
 
   // Mouse move over canvas to track coordinates for drawing
   const handleMouseMoveOnCanvas = (e: React.MouseEvent) => {
@@ -587,6 +654,14 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
   // Mouse down on background (Panning, Add, or Draw)
   const handleMouseDownCanvas = (e: React.MouseEvent) => {
+    // รองรับการคลิกลูกกลิ้งเม้าส์ (Middle click / Button 1) เพื่อลากเลื่อนมุมมอง (Pan) ได้ทันทีทุกตำแหน่ง
+    if (e.button === 1) {
+      e.preventDefault();
+      setIsPanning(true);
+      setStartPan({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      return;
+    }
+
     // If clicking directly on canvas background or paper sheet surface
     const target = e.target as HTMLElement;
     const isSvgBg = target.tagName === 'svg' || 
@@ -849,7 +924,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           <button
             id="btn-zoom-in"
             onClick={handleZoomIn}
-            title="ซูมเข้า (Zoom In)"
+            title="ซูมเข้า (Zoom In) - หมุนลูกกลิ้งเม้าส์ขึ้น"
             className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
           >
             <ZoomIn className="w-3.5 h-3.5" />
@@ -860,7 +935,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           <button
             id="btn-zoom-out"
             onClick={handleZoomOut}
-            title="ซูมออก (Zoom Out)"
+            title="ซูมออก (Zoom Out) - หมุนลูกกลิ้งเม้าส์ลง"
             className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
           >
             <ZoomOut className="w-3.5 h-3.5" />
@@ -1389,13 +1464,13 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           <svg width="18" height="16" viewBox="0 0 18 16" className="inline-block">
             <polygon points="9,2 16,14 2,14" fill="#ffffff" stroke="#0f172a" strokeWidth="2" />
           </svg>
-          <span>ทั่วไป (Public)</span>
+          <span className="text-purple-700 dark:text-purple-300 font-semibold">กฟภ. (จำหน่ายทั่วไป)</span>
         </div>
         <div className="flex items-center gap-1.5">
           <svg width="18" height="16" viewBox="0 0 18 16" className="inline-block">
             <polygon points="9,2 16,14 2,14" fill="#0f172a" stroke="#0f172a" strokeWidth="2" />
           </svg>
-          <span>เฉพาะราย (Dedicated)</span>
+          <span className="text-blue-700 dark:text-blue-300 font-semibold">ผู้ใช้ไฟ (เฉพาะราย)</span>
         </div>
         <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
           <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
@@ -1410,7 +1485,6 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         className={`relative flex-1 w-full h-full cursor-${
           isPanning ? 'grabbing' : canvasClickMode === 'add' || canvasClickMode === 'draw_line' ? 'crosshair' : 'default'
         } ${themeStyles.bg}`}
-        onWheel={handleWheel}
         onMouseMove={handleMouseMoveOnCanvas}
         onMouseDown={handleMouseDownCanvas}
       >
@@ -2013,7 +2087,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       </g>
                     )}
 
-                    {/* Landmark Text according to chosen textPosition direction */}
+                    {/* Landmark Text according to chosen textPosition direction (Clean, no frame/border) */}
                     <text
                       x={textX}
                       y={textY}
@@ -2026,10 +2100,6 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                         label.type === 'lotus' ? '#059669' :
                         '#ea580c'
                       )}
-                      stroke={theme === 'blueprint' ? '#0f172a' : '#ffffff'}
-                      strokeWidth="2.5"
-                      paintOrder="stroke fill"
-                      strokeLinejoin="round"
                       fontSize={fs}
                       fontWeight="bold"
                       dominantBaseline={dominantBaseline}
@@ -2519,7 +2589,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     fontSize="12"
                     fontWeight="800"
                     fontFamily="sans-serif"
-                    fill={isPrivate ? '#9333ea' : '#2563eb'}
+                    fill={isPrivate ? '#2563eb' : '#9333ea'}
                     style={{
                       paintOrder: 'stroke fill',
                       stroke: isTextBgTransparent ? 'none' : themeStyles.canvasPaper,
@@ -2706,10 +2776,10 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
               </span>
               <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
                 hoveredTransformer.type === 'private'
-                  ? 'bg-purple-900 text-purple-200'
-                  : 'bg-emerald-900 text-emerald-200'
+                  ? 'bg-blue-900 text-blue-200 border border-blue-700'
+                  : 'bg-purple-900 text-purple-200 border border-purple-700'
               }`}>
-                {hoveredTransformer.type === 'private' ? 'หม้อแปลงเฉพาะราย' : 'หม้อแปลงจำหน่ายทั่วไป'}
+                {hoveredTransformer.type === 'private' ? 'หม้อแปลงผู้ใช้ไฟ (เฉพาะราย)' : 'หม้อแปลง กฟภ. (จำหน่ายทั่วไป)'}
               </span>
             </div>
             <div className="space-y-1">

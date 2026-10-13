@@ -119,8 +119,8 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
                 strokeWidth="2"
               />
             </svg>
-            <span className={transformer.type === 'private' ? 'text-purple-600' : 'text-slate-700 dark:text-slate-300'}>
-              {transformer.type === 'private' ? 'เฉพาะราย' : 'จำหน่ายทั่วไป'}
+            <span className={transformer.type === 'private' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'}>
+              {transformer.type === 'private' ? 'เฉพาะราย (ผู้ใช้ไฟ)' : 'จำหน่ายทั่วไป (กฟภ.)'}
             </span>
           </div>
         </div>
