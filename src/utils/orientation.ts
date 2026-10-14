@@ -43,16 +43,23 @@ export function getTransformerGeometry(
   triPoints: string;
   stemLine: { x1: number; y1: number; x2: number; y2: number } | null;
   effStemDir: 'top' | 'bottom' | 'left' | 'right' | 'none';
+  bisectLine: { x1: number; y1: number; x2: number; y2: number };
 } {
   let triPoints = "0,-14 12,10 -12,10";
+  let bisectLine = { x1: 0, y1: -14, x2: 0, y2: 10 };
+
   if (orientation === 'left') {
     triPoints = "-14,0 10,-12 10,12";
+    bisectLine = { x1: -14, y1: 0, x2: 10, y2: 0 };
   } else if (orientation === 'right') {
     triPoints = "14,0 -10,-12 -10,12";
+    bisectLine = { x1: 14, y1: 0, x2: -10, y2: 0 };
   } else if (orientation === 'top') {
     triPoints = "0,-14 12,10 -12,10";
+    bisectLine = { x1: 0, y1: -14, x2: 0, y2: 10 };
   } else if (orientation === 'bottom') {
     triPoints = "0,14 12,-10 -12,-10";
+    bisectLine = { x1: 0, y1: 14, x2: 0, y2: -10 };
   }
 
   const effStemDir: 'top' | 'bottom' | 'left' | 'right' | 'none' = stemDirection !== undefined ? stemDirection : (
@@ -74,7 +81,7 @@ export function getTransformerGeometry(
     stemLine = null;
   }
 
-  return { triPoints, stemLine, effStemDir };
+  return { triPoints, stemLine, effStemDir, bisectLine };
 }
 
 /**

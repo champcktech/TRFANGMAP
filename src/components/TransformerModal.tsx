@@ -412,9 +412,9 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                 onChange={e => setFormData({ ...formData, phase: e.target.value as any })}
                 className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-200"
               >
-                <option value="3P">3 เฟส (3P)</option>
-                <option value="1P">1 เฟส (1P)</option>
-                <option value="AC">AC</option>
+                <option value="3P">3 เฟส (3P) - สามเหลี่ยมมาตรฐาน</option>
+                <option value="1P">1 เฟส (1P) - สามเหลี่ยมผ่ากลาง + ป้าย 1Ø</option>
+                <option value="AC">AC (กระแสสลับ)</option>
               </select>
             </div>
 
@@ -651,7 +651,7 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                     const fill = isPriv ? '#0f172a' : '#ffffff';
                     const stroke = '#0f172a';
 
-                    const { triPoints, stemLine, effStemDir } = getTransformerGeometry(ori, formData.stemDirection);
+                    const { triPoints, stemLine, effStemDir, bisectLine } = getTransformerGeometry(ori, formData.stemDirection);
 
                     let cx = 45;
                     let cy = 35;
@@ -684,6 +684,20 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                             />
                           )}
                           <polygon points={triPoints} fill={fill} stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+
+                          {/* 1 Phase Marking in Preview */}
+                          {formData.phase === '1P' && (
+                            <g pointerEvents="none">
+                              <g transform={`translate(${
+                                ori === 'top' ? '12, -12' :
+                                ori === 'bottom' ? '12, 12' :
+                                ori === 'left' ? '-14, -14' : '14, -14'
+                              })`}>
+                                <rect x="-8" y="-7" width="16" height="13" rx="3" fill={isPriv ? '#2563eb' : '#9333ea'} stroke="#ffffff" strokeWidth="1" />
+                                <text x="0" y="3" fontSize="8.5" fontWeight="800" fill="#ffffff" textAnchor="middle">1Ø</text>
+                              </g>
+                            </g>
+                          )}
                         </g>
 
                         {/* Text Card Plate */}

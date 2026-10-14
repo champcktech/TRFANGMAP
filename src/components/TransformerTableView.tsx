@@ -48,6 +48,7 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
   const [search, setSearch] = useState('');
   const [selectedKva, setSelectedKva] = useState<number | null>(null);
   const [selectedType, setSelectedType] = useState<'all' | 'public' | 'private'>('all');
+  const [selectedPhase, setSelectedPhase] = useState<'all' | '1P' | '3P' | 'AC'>('all');
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [sortField, setSortField] = useState<keyof Transformer>('peaNo');
   const [sortAsc, setSortAsc] = useState(true);
@@ -77,9 +78,10 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
 
         const matchesKva = selectedKva === null || t.kva === selectedKva;
         const matchesType = selectedType === 'all' || t.type === selectedType;
+        const matchesPhase = selectedPhase === 'all' || (t.phase || '3P') === selectedPhase;
         const matchesBranch = selectedBranch === 'all' || t.branch === selectedBranch;
 
-        return matchesSearch && matchesKva && matchesType && matchesBranch;
+        return matchesSearch && matchesKva && matchesType && matchesPhase && matchesBranch;
       })
       .sort((a, b) => {
         let valA = a[sortField] ?? '';
@@ -160,8 +162,20 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
             className="px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200"
           >
             <option value="all">ทุกประเภทหม้อแปลง</option>
-            <option value="public">กฟภ. (สามเหลี่ยมโปร่ง)</option>
-            <option value="private">ผู้ใช้ไฟ (สามเหลี่ยมทึบ)</option>
+            <option value="public">กฟภ. (จำหน่ายทั่วไป)</option>
+            <option value="private">ผู้ใช้ไฟ (เฉพาะราย)</option>
+          </select>
+
+          {/* Phase Filter */}
+          <select
+            value={selectedPhase}
+            onChange={e => setSelectedPhase(e.target.value as any)}
+            className="px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200"
+          >
+            <option value="all">ทุกระบบเฟส (1P / 3P)</option>
+            <option value="3P">3 เฟส (3P)</option>
+            <option value="1P">1 เฟส (1P)</option>
+            <option value="AC">AC</option>
           </select>
 
           {/* kVA Filter */}
@@ -349,13 +363,23 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
                     </td>
                     <td className="p-3">
                       <div className="flex items-center gap-1.5">
-                        <svg width="14" height="12" viewBox="0 0 18 16">
+                        <svg width="15" height="13" viewBox="0 0 18 16">
                           <polygon
                             points="9,2 16,14 2,14"
                             fill={t.type === 'private' ? '#0f172a' : '#ffffff'}
                             stroke="#0f172a"
                             strokeWidth="2"
                           />
+                          {t.phase === '1P' && (
+                            <line
+                              x1="9"
+                              y1="2"
+                              x2="9"
+                              y2="14"
+                              stroke={t.type === 'private' ? '#ffffff' : '#0f172a'}
+                              strokeWidth="1.5"
+                            />
+                          )}
                         </svg>
                         <span className={`text-[11px] font-semibold ${
                           t.type === 'private' ? 'text-blue-700 dark:text-blue-300' : 'text-purple-700 dark:text-purple-300'
@@ -364,8 +388,19 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
                         </span>
                       </div>
                     </td>
-                    <td className="p-3 text-slate-600 dark:text-slate-400">
-                      {t.phase || '3P'} ({t.voltage || '22 kV'})
+                    <td className="p-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          t.phase === '1P'
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                            : 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+                        }`}>
+                          {t.phase === '1P' ? '1 เฟส (1Ø)' : t.phase === 'AC' ? 'AC' : '3 เฟส (3Ø)'}
+                        </span>
+                        <span className="text-xs text-slate-500 font-medium">
+                          {t.voltage || '22 kV'}
+                        </span>
+                      </div>
                     </td>
                     <td className="p-3 text-slate-600 dark:text-slate-400">
                       <div>{t.feeder || 'ไลน์สวนดอก'}</div>

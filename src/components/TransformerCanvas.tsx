@@ -1459,7 +1459,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       )}
 
       {/* Legend & Guide Pill (Bottom Left) */}
-      <div className="absolute bottom-4 left-4 z-20 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-xs flex items-center gap-4 text-slate-700 dark:text-slate-300">
+      <div className="absolute bottom-4 left-4 z-20 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-xs flex flex-wrap items-center gap-3.5 text-slate-700 dark:text-slate-300">
         <div className="flex items-center gap-1.5">
           <svg width="18" height="16" viewBox="0 0 18 16" className="inline-block">
             <polygon points="9,2 16,14 2,14" fill="#ffffff" stroke="#0f172a" strokeWidth="2" />
@@ -1471,6 +1471,14 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             <polygon points="9,2 16,14 2,14" fill="#0f172a" stroke="#0f172a" strokeWidth="2" />
           </svg>
           <span className="text-blue-700 dark:text-blue-300 font-semibold">ผู้ใช้ไฟ (เฉพาะราย)</span>
+        </div>
+        <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
+          <svg width="30" height="16" viewBox="0 0 30 16" className="inline-block">
+            <polygon points="9,2 16,14 2,14" fill="#ffffff" stroke="#0f172a" strokeWidth="2" />
+            <rect x="18" y="2" width="12" height="12" rx="2" fill="#9333ea" />
+            <text x="24" y="11" fontSize="8" fontWeight="bold" fill="#ffffff" textAnchor="middle">1Ø</text>
+          </svg>
+          <span className="font-semibold text-amber-700 dark:text-amber-400">1 เฟส (ป้าย 1Ø ที่มุม)</span>
         </div>
         <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
           <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
@@ -2395,7 +2403,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             const textPos = t.textPosition || 'auto';
 
             // Symbol geometry: Triangle and stem line matching orientation & chosen stem direction (4 directions or none)
-            const { triPoints, stemLine, effStemDir } = getTransformerGeometry(orientation, t.stemDirection);
+            const { triPoints, stemLine, effStemDir, bisectLine } = getTransformerGeometry(orientation, t.stemDirection);
 
             // Text Positioning: Smart non-overlapping coordinates
             let effectivePos: 'right' | 'left' | 'top' | 'bottom' = 'right';
@@ -2549,6 +2557,40 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   strokeLinejoin="round"
                   className="transition-transform duration-150 hover:scale-110"
                 />
+
+                {/* สัญลักษณ์เฉพาะสำหรับหม้อแปลง 1 เฟส (1 Phase / 1P / 1Ø) - แสดงป้าย 1Ø ที่มุม */}
+                {t.phase === '1P' && (
+                  <g pointerEvents="none">
+                    {/* ป้ายสัญลักษณ์ 1 เฟส (1Ø Badge) กำกับที่มุมสัญลักษณ์ */}
+                    <g transform={`translate(${
+                      orientation === 'top' ? '12, -12' :
+                      orientation === 'bottom' ? '12, 12' :
+                      orientation === 'left' ? '-14, -14' : '14, -14'
+                    })`}>
+                      <rect
+                        x="-8"
+                        y="-7"
+                        width="16"
+                        height="13"
+                        rx="3"
+                        fill={isPrivate ? '#2563eb' : '#9333ea'}
+                        stroke="#ffffff"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x="0"
+                        y="3"
+                        fontSize="8.5"
+                        fontWeight="800"
+                        fill="#ffffff"
+                        textAnchor="middle"
+                        fontFamily="sans-serif"
+                      >
+                        1Ø
+                      </text>
+                    </g>
+                  </g>
+                )}
 
                 {/* Phase / AC symbol if present */}
                 {t.phase === 'AC' && (
@@ -2771,15 +2813,20 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             }}
           >
             <div className="flex items-center justify-between border-b border-slate-700 pb-1.5 mb-1.5">
-              <span className="font-bold text-amber-400 text-sm">
-                {hoveredTransformer.kva} kVA
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-amber-400 text-sm">
+                  {hoveredTransformer.kva} kVA
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-900/60 text-amber-200 border border-amber-700/60">
+                  {hoveredTransformer.phase === '1P' ? '1 เฟส (1Ø)' : hoveredTransformer.phase === 'AC' ? 'AC' : '3 เฟส (3Ø)'}
+                </span>
+              </div>
               <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
                 hoveredTransformer.type === 'private'
                   ? 'bg-blue-900 text-blue-200 border border-blue-700'
                   : 'bg-purple-900 text-purple-200 border border-purple-700'
               }`}>
-                {hoveredTransformer.type === 'private' ? 'หม้อแปลงผู้ใช้ไฟ (เฉพาะราย)' : 'หม้อแปลง กฟภ. (จำหน่ายทั่วไป)'}
+                {hoveredTransformer.type === 'private' ? 'ผู้ใช้ไฟ' : 'กฟภ.'}
               </span>
             </div>
             <div className="space-y-1">
