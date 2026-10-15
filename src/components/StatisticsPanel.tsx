@@ -31,11 +31,13 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
   const publicKva = transformers.filter(t => t.type === 'public').reduce((sum, t) => sum + (t.kva || 0), 0);
   const privateKva = transformers.filter(t => t.type === 'private').reduce((sum, t) => sum + (t.kva || 0), 0);
 
-  // Group by Phase (3 Phase vs 1 Phase)
+  // Group by Phase (3 Phase vs 1 Phase 1 Unit vs 1 Phase 2 Units)
   const threePhaseCount = transformers.filter(t => (t.phase || '3P') === '3P').length;
   const singlePhaseCount = transformers.filter(t => t.phase === '1P').length;
+  const twoUnitSinglePhaseCount = transformers.filter(t => t.phase === '2x1P').length;
   const threePhaseKva = transformers.filter(t => (t.phase || '3P') === '3P').reduce((sum, t) => sum + (t.kva || 0), 0);
   const singlePhaseKva = transformers.filter(t => t.phase === '1P').reduce((sum, t) => sum + (t.kva || 0), 0);
+  const twoUnitSinglePhaseKva = transformers.filter(t => t.phase === '2x1P').reduce((sum, t) => sum + (t.kva || 0), 0);
 
   // Group by kVA
   const kvaDistribution: { [key: number]: { count: number; totalKva: number } } = {};
@@ -152,7 +154,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
         </div>
       </div>
 
-      {/* Phase Distribution Summary (3 Phase vs 1 Phase) */}
+      {/* Phase Distribution Summary (3 Phase vs 1 Phase 1 Unit vs 1 Phase 2 Units) */}
       <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
         <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-3 flex items-center justify-between">
           <span className="flex items-center gap-1.5">
@@ -160,68 +162,101 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
             <span>การจำแนกตามระบบเฟส (Phase System Breakdown)</span>
           </span>
           <span className="text-[11px] text-slate-400 font-normal">
-            สัญลักษณ์ผังวงจรจำแนก 3 เฟส (สามเหลี่ยม) และ 1 เฟส (ป้าย 1Ø ที่มุม)
+            สัญลักษณ์ผังวงจร: 3 เฟส (สามเหลี่ยม), 1 เฟส 1 เครื่อง (ป้าย 1Ø), 1 เฟส 2 เครื่อง (สามเหลี่ยมคู่ + ป้าย 2x1Ø)
           </span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           {/* 3-Phase Card */}
           <div className="p-3.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-800 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-800 flex items-center justify-center shrink-0">
                 <svg width="20" height="18" viewBox="0 0 18 16">
                   <polygon points="9,2 16,14 2,14" fill="#3b82f6" fillOpacity="0.1" stroke="#2563eb" strokeWidth="2" />
                 </svg>
               </div>
-              <div>
-                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
                   <span>3 เฟส (3P / 3Ø)</span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 font-semibold">
                     สามเหลี่ยมมาตรฐาน
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">
+                <div className="text-[11px] text-slate-500 mt-0.5 truncate">
                   โหลดรวม {threePhaseKva.toLocaleString()} kVA ({Math.round((threePhaseKva / (totalKva || 1)) * 100)}%)
                 </div>
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right shrink-0">
               <div className="text-xl font-extrabold text-blue-600 dark:text-blue-400">
                 {threePhaseCount} <span className="text-xs font-normal text-slate-500">เครื่อง</span>
               </div>
               <div className="text-[10px] text-slate-400">
-                {Math.round((threePhaseCount / (transformers.length || 1)) * 100)}% ของระบบ
+                {Math.round((threePhaseCount / (transformers.length || 1)) * 100)}%
               </div>
             </div>
           </div>
 
-          {/* 1-Phase Card */}
+          {/* 1-Phase 1 Unit Card */}
           <div className="p-3.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center">
-                <svg width="22" height="18" viewBox="0 0 24 16">
-                  <polygon points="9,2 16,14 2,14" fill="#f59e0b" fillOpacity="0.1" stroke="#d97706" strokeWidth="2" />
-                  <rect x="17" y="2" width="7" height="7" rx="1.5" fill="#d97706" />
-                  <text x="20.5" y="7.5" fontSize="5" fontWeight="bold" fill="#ffffff" textAnchor="middle">1</text>
+              <div className="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center shrink-0">
+                <svg width="24" height="18" viewBox="0 0 28 16">
+                  <polygon points="8,2 14,14 2,14" fill="#f59e0b" fillOpacity="0.1" stroke="#d97706" strokeWidth="2" />
+                  <rect x="16" y="2" width="12" height="12" rx="2" fill="#d97706" />
+                  <text x="22" y="11" fontSize="7.5" fontWeight="bold" fill="#ffffff" textAnchor="middle">1Ø</text>
                 </svg>
               </div>
-              <div>
-                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <span>1 เฟส (1P / 1Ø)</span>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                  <span>1 เฟส 1 เครื่อง</span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 font-semibold">
-                    ป้าย 1Ø ที่มุม
+                    ป้าย 1Ø
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">
+                <div className="text-[11px] text-slate-500 mt-0.5 truncate">
                   โหลดรวม {singlePhaseKva.toLocaleString()} kVA ({Math.round((singlePhaseKva / (totalKva || 1)) * 100)}%)
                 </div>
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right shrink-0">
               <div className="text-xl font-extrabold text-amber-600 dark:text-amber-400">
                 {singlePhaseCount} <span className="text-xs font-normal text-slate-500">เครื่อง</span>
               </div>
               <div className="text-[10px] text-slate-400">
-                {Math.round((singlePhaseCount / (transformers.length || 1)) * 100)}% ของระบบ
+                {Math.round((singlePhaseCount / (transformers.length || 1)) * 100)}%
+              </div>
+            </div>
+          </div>
+
+          {/* 1-Phase 2 Units Card */}
+          <div className="p-3.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-purple-50 dark:bg-purple-900/40 border border-purple-200 dark:border-purple-800 flex items-center justify-center shrink-0">
+                <svg width="28" height="18" viewBox="0 0 38 16">
+                  <polygon points="5,2 10,14 0,14" fill="#a855f7" fillOpacity="0.1" stroke="#9333ea" strokeWidth="1.8" />
+                  <polygon points="10,2 15,14 5,14" fill="#a855f7" fillOpacity="0.1" stroke="#9333ea" strokeWidth="1.8" />
+                  <rect x="17" y="2" width="20" height="12" rx="2" fill="#9333ea" />
+                  <text x="27" y="11" fontSize="7" fontWeight="bold" fill="#ffffff" textAnchor="middle">2x1Ø</text>
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                  <span>1 เฟส 2 เครื่อง</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 font-semibold">
+                    ป้าย 2x1Ø
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                  โหลดรวม {twoUnitSinglePhaseKva.toLocaleString()} kVA ({Math.round((twoUnitSinglePhaseKva / (totalKva || 1)) * 100)}%)
+                </div>
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-xl font-extrabold text-purple-600 dark:text-purple-400">
+                {twoUnitSinglePhaseCount} <span className="text-xs font-normal text-slate-500">จุด</span>
+              </div>
+              <div className="text-[10px] text-slate-400">
+                {Math.round((twoUnitSinglePhaseCount / (transformers.length || 1)) * 100)}%
               </div>
             </div>
           </div>

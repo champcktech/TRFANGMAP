@@ -413,7 +413,8 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                 className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-200"
               >
                 <option value="3P">3 เฟส (3P) - สามเหลี่ยมมาตรฐาน</option>
-                <option value="1P">1 เฟส (1P) - สามเหลี่ยมผ่ากลาง + ป้าย 1Ø</option>
+                <option value="1P">1 เฟส 1 เครื่อง (1P) - ป้าย 1Ø ที่มุม</option>
+                <option value="2x1P">1 เฟส 2 เครื่อง (2x1P) - หม้อแปลง 1 เฟส จุดเดียวกัน 2 เครื่อง (ป้าย 2x1Ø)</option>
                 <option value="AC">AC (กระแสสลับ)</option>
               </select>
             </div>
@@ -683,7 +684,23 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                               strokeLinecap="round"
                             />
                           )}
-                          <polygon points={triPoints} fill={fill} stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+                          {/* Symbol Triangle */}
+                          {formData.phase === '2x1P' ? (
+                            <g>
+                              <g transform={`translate(${
+                                ori === 'top' || ori === 'bottom' ? '-7, 0' : '0, -7'
+                              })`}>
+                                <polygon points={triPoints} fill={fill} stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+                              </g>
+                              <g transform={`translate(${
+                                ori === 'top' || ori === 'bottom' ? '7, 0' : '0, 7'
+                              })`}>
+                                <polygon points={triPoints} fill={fill} stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+                              </g>
+                            </g>
+                          ) : (
+                            <polygon points={triPoints} fill={fill} stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+                          )}
 
                           {/* 1 Phase Marking in Preview */}
                           {formData.phase === '1P' && (
@@ -695,6 +712,20 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
                               })`}>
                                 <rect x="-8" y="-7" width="16" height="13" rx="3" fill={isPriv ? '#2563eb' : '#9333ea'} stroke="#ffffff" strokeWidth="1" />
                                 <text x="0" y="3" fontSize="8.5" fontWeight="800" fill="#ffffff" textAnchor="middle">1Ø</text>
+                              </g>
+                            </g>
+                          )}
+
+                          {/* 1 Phase 2 Units Marking in Preview */}
+                          {formData.phase === '2x1P' && (
+                            <g pointerEvents="none">
+                              <g transform={`translate(${
+                                ori === 'top' ? '18, -12' :
+                                ori === 'bottom' ? '18, 12' :
+                                ori === 'left' ? '-14, -18' : '14, -18'
+                              })`}>
+                                <rect x="-13" y="-7" width="26" height="13" rx="3" fill={isPriv ? '#2563eb' : '#9333ea'} stroke="#ffffff" strokeWidth="1" />
+                                <text x="0" y="3" fontSize="8" fontWeight="800" fill="#ffffff" textAnchor="middle">2x1Ø</text>
                               </g>
                             </g>
                           )}

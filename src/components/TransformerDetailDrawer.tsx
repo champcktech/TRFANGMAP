@@ -114,8 +114,8 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
             <svg width="14" height="12" viewBox="0 0 18 16">
               <polygon
                 points="9,2 16,14 2,14"
-                fill={transformer.type === 'private' ? '#0f172a' : '#ffffff'}
-                stroke="#0f172a"
+                fill={transformer.type === 'private' ? '#2563eb' : '#ffffff'}
+                stroke={transformer.type === 'private' ? '#2563eb' : '#9333ea'}
                 strokeWidth="2"
               />
             </svg>
@@ -275,7 +275,10 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
           <div>
             <div className="text-slate-400 text-[11px]">ระบบไฟ / แรงดัน</div>
             <div className="font-medium text-slate-700 dark:text-slate-300 mt-0.5">
-              {transformer.phase || '3P'} ({transformer.voltage || '22 kV'})
+              {transformer.phase === '1P' ? '1 เฟส 1 เครื่อง (1Ø)' :
+               transformer.phase === '2x1P' ? '1 เฟส 2 เครื่อง (2x1Ø)' :
+               transformer.phase === 'AC' ? 'AC' :
+               '3 เฟส (3Ø)'} ({transformer.voltage || '22 kV'})
             </div>
           </div>
           <div>

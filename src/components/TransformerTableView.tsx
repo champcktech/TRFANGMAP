@@ -172,9 +172,10 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
             onChange={e => setSelectedPhase(e.target.value as any)}
             className="px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200"
           >
-            <option value="all">ทุกระบบเฟส (1P / 3P)</option>
+            <option value="all">ทุกระบบเฟส (1P / 2x1P / 3P)</option>
             <option value="3P">3 เฟส (3P)</option>
-            <option value="1P">1 เฟส (1P)</option>
+            <option value="1P">1 เฟส 1 เครื่อง (1P)</option>
+            <option value="2x1P">1 เฟส 2 เครื่อง (2x1P)</option>
             <option value="AC">AC</option>
           </select>
 
@@ -363,21 +364,28 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
                     </td>
                     <td className="p-3">
                       <div className="flex items-center gap-1.5">
-                        <svg width="15" height="13" viewBox="0 0 18 16">
-                          <polygon
-                            points="9,2 16,14 2,14"
-                            fill={t.type === 'private' ? '#0f172a' : '#ffffff'}
-                            stroke="#0f172a"
-                            strokeWidth="2"
-                          />
-                          {t.phase === '1P' && (
-                            <line
-                              x1="9"
-                              y1="2"
-                              x2="9"
-                              y2="14"
-                              stroke={t.type === 'private' ? '#ffffff' : '#0f172a'}
-                              strokeWidth="1.5"
+                        <svg width={t.phase === '2x1P' ? "22" : "15"} height="13" viewBox={t.phase === '2x1P' ? "0 0 24 16" : "0 0 18 16"}>
+                          {t.phase === '2x1P' ? (
+                            <>
+                              <polygon
+                                points="6,2 12,14 0,14"
+                                fill={t.type === 'private' ? '#2563eb' : '#ffffff'}
+                                stroke={t.type === 'private' ? '#2563eb' : '#9333ea'}
+                                strokeWidth="1.8"
+                              />
+                              <polygon
+                                points="12,2 18,14 6,14"
+                                fill={t.type === 'private' ? '#2563eb' : '#ffffff'}
+                                stroke={t.type === 'private' ? '#2563eb' : '#9333ea'}
+                                strokeWidth="1.8"
+                              />
+                            </>
+                          ) : (
+                            <polygon
+                              points="9,2 16,14 2,14"
+                              fill={t.type === 'private' ? '#2563eb' : '#ffffff'}
+                              stroke={t.type === 'private' ? '#2563eb' : '#9333ea'}
+                              strokeWidth="2"
                             />
                           )}
                         </svg>
@@ -393,9 +401,11 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                           t.phase === '1P'
                             ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                            : t.phase === '2x1P'
+                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 border border-purple-300 dark:border-purple-700'
                             : 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
                         }`}>
-                          {t.phase === '1P' ? '1 เฟส (1Ø)' : t.phase === 'AC' ? 'AC' : '3 เฟส (3Ø)'}
+                          {t.phase === '1P' ? '1 เฟส (1Ø)' : t.phase === '2x1P' ? '1 เฟส 2 เครื่อง (2x1Ø)' : t.phase === 'AC' ? 'AC' : '3 เฟส (3Ø)'}
                         </span>
                         <span className="text-xs text-slate-500 font-medium">
                           {t.voltage || '22 kV'}

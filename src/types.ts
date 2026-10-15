@@ -6,7 +6,7 @@ export interface Transformer {
   name: string; // เช่น "สวนดอก 1", "สำนักงานฝาง"
   kva: number; // เช่น 30, 50, 100, 160, 250
   type: TransformerType;
-  phase?: '1P' | '3P' | 'AC';
+  phase?: '1P' | '2x1P' | '3P' | 'AC';
   voltage?: string; // เช่น "22 kV", "33 kV"
   feeder: string; // เช่น "ไลน์สวนดอก", "สายป้อน 3", "FAA-06"
   branch?: string; // เช่น "สายเมน เชียงใหม่-ฝาง", "บ้านห้วยบอน", "สันทรายคลองน้อย"

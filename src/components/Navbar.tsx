@@ -420,7 +420,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                           </div>
                           <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                             <span className={`font-medium ${t.type === 'private' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'}`}>
-                              {t.kva} kVA {t.phase || '3P'}
+                              {t.kva} kVA ({t.phase === '2x1P' ? '2x1Ø' : t.phase === '1P' ? '1Ø' : t.phase === 'AC' ? 'AC' : '3Ø'})
                             </span>
                             <span>&bull;</span>
                             <span>{t.type === 'private' ? 'ผู้ใช้ไฟ (เฉพาะราย)' : 'กฟภ. (จำหน่ายทั่วไป)'}</span>

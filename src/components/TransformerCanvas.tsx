@@ -1462,23 +1462,32 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       <div className="absolute bottom-4 left-4 z-20 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-xs flex flex-wrap items-center gap-3.5 text-slate-700 dark:text-slate-300">
         <div className="flex items-center gap-1.5">
           <svg width="18" height="16" viewBox="0 0 18 16" className="inline-block">
-            <polygon points="9,2 16,14 2,14" fill="#ffffff" stroke="#0f172a" strokeWidth="2" />
+            <polygon points="9,2 16,14 2,14" fill="#ffffff" stroke="#9333ea" strokeWidth="2" />
           </svg>
           <span className="text-purple-700 dark:text-purple-300 font-semibold">กฟภ. (จำหน่ายทั่วไป)</span>
         </div>
         <div className="flex items-center gap-1.5">
           <svg width="18" height="16" viewBox="0 0 18 16" className="inline-block">
-            <polygon points="9,2 16,14 2,14" fill="#0f172a" stroke="#0f172a" strokeWidth="2" />
+            <polygon points="9,2 16,14 2,14" fill="#2563eb" stroke="#2563eb" strokeWidth="2" />
           </svg>
           <span className="text-blue-700 dark:text-blue-300 font-semibold">ผู้ใช้ไฟ (เฉพาะราย)</span>
         </div>
         <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
-          <svg width="30" height="16" viewBox="0 0 30 16" className="inline-block">
-            <polygon points="9,2 16,14 2,14" fill="#ffffff" stroke="#0f172a" strokeWidth="2" />
-            <rect x="18" y="2" width="12" height="12" rx="2" fill="#9333ea" />
-            <text x="24" y="11" fontSize="8" fontWeight="bold" fill="#ffffff" textAnchor="middle">1Ø</text>
+          <svg width="28" height="16" viewBox="0 0 28 16" className="inline-block">
+            <polygon points="8,2 14,14 2,14" fill="#ffffff" stroke="#9333ea" strokeWidth="2" />
+            <rect x="16" y="2" width="12" height="12" rx="2" fill="#9333ea" />
+            <text x="22" y="11" fontSize="8" fontWeight="bold" fill="#ffffff" textAnchor="middle">1Ø</text>
           </svg>
-          <span className="font-semibold text-amber-700 dark:text-amber-400">1 เฟส (ป้าย 1Ø ที่มุม)</span>
+          <span className="font-semibold text-amber-700 dark:text-amber-400">1 เฟส 1 เครื่อง (ป้าย 1Ø)</span>
+        </div>
+        <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
+          <svg width="44" height="16" viewBox="0 0 44 16" className="inline-block">
+            <polygon points="6,2 12,14 0,14" fill="#ffffff" stroke="#9333ea" strokeWidth="1.8" />
+            <polygon points="12,2 18,14 6,14" fill="#ffffff" stroke="#9333ea" strokeWidth="1.8" />
+            <rect x="20" y="2" width="22" height="12" rx="2" fill="#9333ea" />
+            <text x="31" y="11" fontSize="7.5" fontWeight="bold" fill="#ffffff" textAnchor="middle">2x1Ø</text>
+          </svg>
+          <span className="font-semibold text-purple-700 dark:text-purple-300">1 เฟส 2 เครื่อง (ป้าย 2x1Ø)</span>
         </div>
         <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
           <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
@@ -2549,16 +2558,44 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 )}
 
                 {/* Transformer Triangle (Equilateral Symbol) */}
-                <polygon
-                  points={triPoints}
-                  fill={triFill}
-                  stroke={triStroke}
-                  strokeWidth="2"
-                  strokeLinejoin="round"
-                  className="transition-transform duration-150 hover:scale-110"
-                />
+                {t.phase === '2x1P' ? (
+                  // หม้อแปลง 1 เฟส จุดเดียวกัน 2 เครื่อง: สัญลักษณ์รูปสามเหลี่ยมคู่ (Twin Triangles)
+                  <g className="transition-transform duration-150 hover:scale-110">
+                    <g transform={`translate(${
+                      orientation === 'top' || orientation === 'bottom' ? '-7, 0' : '0, -7'
+                    })`}>
+                      <polygon
+                        points={triPoints}
+                        fill={triFill}
+                        stroke={triStroke}
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                      />
+                    </g>
+                    <g transform={`translate(${
+                      orientation === 'top' || orientation === 'bottom' ? '7, 0' : '0, 7'
+                    })`}>
+                      <polygon
+                        points={triPoints}
+                        fill={triFill}
+                        stroke={triStroke}
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                      />
+                    </g>
+                  </g>
+                ) : (
+                  <polygon
+                    points={triPoints}
+                    fill={triFill}
+                    stroke={triStroke}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                    className="transition-transform duration-150 hover:scale-110"
+                  />
+                )}
 
-                {/* สัญลักษณ์เฉพาะสำหรับหม้อแปลง 1 เฟส (1 Phase / 1P / 1Ø) - แสดงป้าย 1Ø ที่มุม */}
+                {/* สัญลักษณ์เฉพาะสำหรับหม้อแปลง 1 เฟส 1 เครื่อง (1 Phase 1 Unit / 1P / 1Ø) - แสดงป้าย 1Ø ที่มุม */}
                 {t.phase === '1P' && (
                   <g pointerEvents="none">
                     {/* ป้ายสัญลักษณ์ 1 เฟส (1Ø Badge) กำกับที่มุมสัญลักษณ์ */}
@@ -2587,6 +2624,40 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                         fontFamily="sans-serif"
                       >
                         1Ø
+                      </text>
+                    </g>
+                  </g>
+                )}
+
+                {/* สัญลักษณ์เฉพาะสำหรับหม้อแปลง 1 เฟส 2 เครื่อง (1 Phase 2 Units / 2x1P / 2x1Ø) - แสดงป้าย 2x1Ø ที่มุม */}
+                {t.phase === '2x1P' && (
+                  <g pointerEvents="none">
+                    {/* ป้ายสัญลักษณ์ 1 เฟส 2 เครื่อง (2x1Ø Badge) กำกับที่มุมสัญลักษณ์ */}
+                    <g transform={`translate(${
+                      orientation === 'top' ? '18, -12' :
+                      orientation === 'bottom' ? '18, 12' :
+                      orientation === 'left' ? '-14, -18' : '14, -18'
+                    })`}>
+                      <rect
+                        x="-13"
+                        y="-7"
+                        width="26"
+                        height="13"
+                        rx="3"
+                        fill={isPrivate ? '#2563eb' : '#9333ea'}
+                        stroke="#ffffff"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x="0"
+                        y="3"
+                        fontSize="8"
+                        fontWeight="800"
+                        fill="#ffffff"
+                        textAnchor="middle"
+                        fontFamily="sans-serif"
+                      >
+                        2x1Ø
                       </text>
                     </g>
                   </g>
@@ -2818,7 +2889,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   {hoveredTransformer.kva} kVA
                 </span>
                 <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-900/60 text-amber-200 border border-amber-700/60">
-                  {hoveredTransformer.phase === '1P' ? '1 เฟส (1Ø)' : hoveredTransformer.phase === 'AC' ? 'AC' : '3 เฟส (3Ø)'}
+                  {hoveredTransformer.phase === '1P' ? '1 เฟส (1Ø)' : hoveredTransformer.phase === '2x1P' ? '1 เฟส 2 เครื่อง (2x1Ø)' : hoveredTransformer.phase === 'AC' ? 'AC' : '3 เฟส (3Ø)'}
                 </span>
               </div>
               <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
