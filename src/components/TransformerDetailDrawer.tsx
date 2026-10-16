@@ -111,14 +111,31 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
         <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
           <div className="text-[10px] font-semibold text-slate-500">ประเภท</div>
           <div className="text-xs font-bold mt-1 flex items-center gap-1.5">
-            <svg width="14" height="12" viewBox="0 0 18 16">
-              <polygon
-                points="9,2 16,14 2,14"
-                fill={transformer.type === 'private' ? '#2563eb' : '#ffffff'}
-                stroke={transformer.type === 'private' ? '#2563eb' : '#9333ea'}
-                strokeWidth="2"
-              />
-            </svg>
+            {transformer.phase === '2x1P' ? (
+              <svg width="22" height="12" viewBox="0 0 26 16" className="shrink-0">
+                <polygon
+                  points="6,2 12,14 0,14"
+                  fill={transformer.type === 'private' ? '#2563eb' : '#ffffff'}
+                  stroke={transformer.type === 'private' ? '#2563eb' : '#9333ea'}
+                  strokeWidth="1.8"
+                />
+                <polygon
+                  points="14,2 20,14 8,14"
+                  fill={transformer.type === 'private' ? '#2563eb' : '#ffffff'}
+                  stroke={transformer.type === 'private' ? '#2563eb' : '#9333ea'}
+                  strokeWidth="1.8"
+                />
+              </svg>
+            ) : (
+              <svg width="14" height="12" viewBox="0 0 18 16" className="shrink-0">
+                <polygon
+                  points="9,2 16,14 2,14"
+                  fill={transformer.type === 'private' ? '#2563eb' : '#ffffff'}
+                  stroke={transformer.type === 'private' ? '#2563eb' : '#9333ea'}
+                  strokeWidth="2"
+                />
+              </svg>
+            )}
             <span className={transformer.type === 'private' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'}>
               {transformer.type === 'private' ? 'เฉพาะราย (ผู้ใช้ไฟ)' : 'จำหน่ายทั่วไป (กฟภ.)'}
             </span>

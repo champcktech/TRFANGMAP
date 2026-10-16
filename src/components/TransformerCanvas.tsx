@@ -33,8 +33,17 @@ import {
   Power,
   Type,
   GripVertical,
-  Landmark
+  Landmark,
+  BoxSelect,
+  Copy
 } from 'lucide-react';
+
+export interface MultiSelection {
+  transformerIds: string[];
+  switchIds: string[];
+  annotationIds: string[];
+  pathIds: string[];
+}
 
 interface TransformerCanvasProps {
   sheetId?: string;
@@ -72,6 +81,14 @@ interface TransformerCanvasProps {
   onAddTransformerAt: (x: number, y: number) => void;
   onAddSwitchAt?: (x: number, y: number) => void;
   onAddAnnotationAt?: (x: number, y: number, initialType?: AnnotationType) => void;
+  onBatchUpdatePositions?: (updates: {
+    transformers?: { id: string; x: number; y: number }[];
+    switches?: { id: string; x: number; y: number }[];
+    annotations?: { id: string; x: number; y: number }[];
+    feederPaths?: FeederPath[];
+  }) => void;
+  onBatchDelete?: (selection: MultiSelection) => void;
+  onBatchDuplicate?: (selection: MultiSelection) => void;
 }
 
 export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
@@ -109,7 +126,10 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   onUpdateAnnotation,
   onAddTransformerAt,
   onAddSwitchAt,
-  onAddAnnotationAt
+  onAddAnnotationAt,
+  onBatchUpdatePositions,
+  onBatchDelete,
+  onBatchDuplicate
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState<number>(1);
@@ -150,10 +170,41 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   const dragMovedRef = useRef<boolean>(false);
   const [hoveredTransformer, setHoveredTransformer] = useState<Transformer | null>(null);
   const [hoveredPathId, setHoveredPathId] = useState<string | null>(null);
-  const [canvasClickMode, setCanvasClickMode] = useState<'select' | 'add' | 'add_switch' | 'add_annotation' | 'add_landmark' | 'edit_line' | 'draw_line'>('select');
+  const [canvasClickMode, setCanvasClickMode] = useState<'select' | 'marquee' | 'add' | 'add_switch' | 'add_annotation' | 'add_landmark' | 'edit_line' | 'draw_line'>('select');
   const [pendingLandmarkType, setPendingLandmarkType] = useState<AnnotationType | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+
+  // Multi-Selection State (รองรับการเลือกและย้ายหม้อแปลง, สวิตช์, เส้นวงจร, ป้ายข้อความ ทีละหลายๆ สัญลักษณ์พร้อมกัน)
+  const [multiSelection, setMultiSelection] = useState<MultiSelection>({
+    transformerIds: selectedId ? [selectedId] : [],
+    switchIds: selectedSwitchId ? [selectedSwitchId] : [],
+    annotationIds: selectedAnnotationId ? [selectedAnnotationId] : [],
+    pathIds: selectedPathId ? [selectedPathId] : []
+  });
+
+  // Multi-Dragging State
+  const [multiDragging, setMultiDragging] = useState<{
+    startX: number;
+    startY: number;
+    items: {
+      transformers: { id: string; initialX: number; initialY: number }[];
+      switches: { id: string; initialX: number; initialY: number }[];
+      annotations: { id: string; initialX: number; initialY: number }[];
+      feederPaths: { id: string; initialPoints: { x: number; y: number }[] }[];
+    };
+  } | null>(null);
+
+  // Marquee Selection Box (Rubber-band selection)
+  const [marqueeBox, setMarqueeBox] = useState<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+    isShift: boolean;
+  } | null>(null);
+
+  const [nudgeStep, setNudgeStep] = useState<number>(10);
   const canvasSizeMode: 'a4_landscape' = 'a4_landscape'; // ล็อคขนาดเท่า A4 แนวนอนเป็นมาตรฐาน
   const [symbolScale, setSymbolScale] = useState<number>(0.85); // 0.85 default (ขนาดสัญลักษณ์กะทัดรัดลง)
   const canvasOrientation: 'landscape' = 'landscape'; // แนวนอนเป็นมาตรฐานถาวรตามความต้องการของผู้ใช้
@@ -309,31 +360,229 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     }
   }, [isReadOnly]);
 
-  // Global window listeners for butter-smooth dragging & panning + Delete key
+  // Synchronize single selection with multi-selection when single items are selected from outside
   useEffect(() => {
-    // Keyboard delete shortcut for any selected element
+    const totalSelected = 
+      multiSelection.transformerIds.length +
+      multiSelection.switchIds.length +
+      multiSelection.annotationIds.length +
+      multiSelection.pathIds.length;
+
+    if (totalSelected <= 1) {
+      setMultiSelection({
+        transformerIds: selectedId ? [selectedId] : [],
+        switchIds: selectedSwitchId ? [selectedSwitchId] : [],
+        annotationIds: selectedAnnotationId ? [selectedAnnotationId] : [],
+        pathIds: selectedPathId ? [selectedPathId] : []
+      });
+    }
+  }, [selectedId, selectedSwitchId, selectedAnnotationId, selectedPathId]);
+
+  const totalSelectedCount = useMemo(() => {
+    return (
+      multiSelection.transformerIds.length +
+      multiSelection.switchIds.length +
+      multiSelection.annotationIds.length +
+      multiSelection.pathIds.length
+    );
+  }, [multiSelection]);
+
+  // คำนวณกรอบ Bounding Box ครอบคลุมทุกสัญลักษณ์และเส้นที่เลือกอยู่
+  const selectedBounds = useMemo(() => {
+    if (totalSelectedCount < 2) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    displayData.transformers.forEach(t => {
+      if (multiSelection.transformerIds.includes(t.id)) {
+        minX = Math.min(minX, t.x - 24);
+        maxX = Math.max(maxX, t.x + 24);
+        minY = Math.min(minY, t.y - 24);
+        maxY = Math.max(maxY, t.y + 24);
+      }
+    });
+
+    displayData.switches.forEach(s => {
+      if (multiSelection.switchIds.includes(s.id)) {
+        minX = Math.min(minX, s.x - 22);
+        maxX = Math.max(maxX, s.x + 22);
+        minY = Math.min(minY, s.y - 22);
+        maxY = Math.max(maxY, s.y + 22);
+      }
+    });
+
+    displayData.annotations.forEach(a => {
+      if (multiSelection.annotationIds.includes(a.id)) {
+        minX = Math.min(minX, a.x - 45);
+        maxX = Math.max(maxX, a.x + 45);
+        minY = Math.min(minY, a.y - 18);
+        maxY = Math.max(maxY, a.y + 18);
+      }
+    });
+
+    displayData.feederPaths.forEach(p => {
+      if (multiSelection.pathIds.includes(p.id)) {
+        p.points.forEach(pt => {
+          minX = Math.min(minX, pt.x - 12);
+          maxX = Math.max(maxX, pt.x + 12);
+          minY = Math.min(minY, pt.y - 12);
+          maxY = Math.max(maxY, pt.y + 12);
+        });
+      }
+    });
+
+    if (minX === Infinity) return null;
+    return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+  }, [totalSelectedCount, multiSelection, displayData]);
+
+  // เลื่อนตำแหน่งสัญลักษณ์และเส้นทั้งหมดที่เลือกไว้พร้อมกัน (Nudge)
+  const handleNudgeSelection = useCallback((dx: number, dy: number) => {
+    if (isReadOnly) return;
+    const tfUpdates = displayData.transformers
+      .filter(t => multiSelection.transformerIds.includes(t.id))
+      .map(t => {
+        const pt = toPortraitCoords(t.x + dx, t.y + dy);
+        return { id: t.id, x: pt.x, y: pt.y };
+      });
+
+    const swUpdates = displayData.switches
+      .filter(s => multiSelection.switchIds.includes(s.id))
+      .map(s => {
+        const pt = toPortraitCoords(s.x + dx, s.y + dy);
+        return { id: s.id, x: pt.x, y: pt.y };
+      });
+
+    const annUpdates = displayData.annotations
+      .filter(a => multiSelection.annotationIds.includes(a.id))
+      .map(a => {
+        const pt = toPortraitCoords(a.x + dx, a.y + dy);
+        return { id: a.id, x: pt.x, y: pt.y };
+      });
+
+    const pathUpdates = displayData.feederPaths
+      .filter(p => multiSelection.pathIds.includes(p.id))
+      .map(p => {
+        const original = feederPaths.find(orig => orig.id === p.id);
+        const newPoints = p.points.map(pt => toPortraitCoords(pt.x + dx, pt.y + dy));
+        return { ...(original || { id: p.id, points: newPoints }), points: newPoints };
+      });
+
+    if (onBatchUpdatePositions) {
+      onBatchUpdatePositions({
+        transformers: tfUpdates,
+        switches: swUpdates,
+        annotations: annUpdates,
+        feederPaths: pathUpdates
+      });
+    } else {
+      tfUpdates.forEach(u => onUpdateTransformerPosition(u.id, u.x, u.y));
+      swUpdates.forEach(u => onUpdateSwitchPosition?.(u.id, u.x, u.y));
+      annUpdates.forEach(u => onUpdateAnnotationPosition?.(u.id, u.x, u.y));
+      pathUpdates.forEach(u => onUpdateFeederPath?.(u));
+    }
+  }, [
+    isReadOnly,
+    displayData,
+    multiSelection,
+    feederPaths,
+    toPortraitCoords,
+    onBatchUpdatePositions,
+    onUpdateTransformerPosition,
+    onUpdateSwitchPosition,
+    onUpdateAnnotationPosition,
+    onUpdateFeederPath
+  ]);
+
+  // Global window listeners for butter-smooth dragging & panning + Keyboard shortcuts
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isReadOnly) return;
       const activeTag = document.activeElement?.tagName?.toLowerCase();
       if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
 
+      // Select All (Ctrl+A / Cmd+A)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setMultiSelection({
+          transformerIds: transformers.map(t => t.id),
+          switchIds: switches.map(s => s.id),
+          annotationIds: annotations.map(a => a.id),
+          pathIds: feederPaths.map(p => p.id)
+        });
+        return;
+      }
+
+      // Duplicate (Ctrl+D / Cmd+D)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        if (totalSelectedCount > 0 && onBatchDuplicate) {
+          onBatchDuplicate(multiSelection);
+        }
+        return;
+      }
+
+      // Escape to clear selection
+      if (e.key === 'Escape') {
+        setMultiSelection({ transformerIds: [], switchIds: [], annotationIds: [], pathIds: [] });
+        onSelectTransformer(null);
+        onSelectPath?.(null);
+        onSelectSwitch?.(null);
+        onSelectAnnotation?.(null);
+        if (canvasClickMode === 'marquee') setCanvasClickMode('select');
+        return;
+      }
+
+      // Keyboard arrow keys for nudge (5px standard, 20px with Shift)
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (totalSelectedCount > 0) {
+          e.preventDefault();
+          const step = e.shiftKey ? 20 : 5;
+          const dx = e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0;
+          const dy = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
+          handleNudgeSelection(dx, dy);
+          return;
+        }
+      }
+
+      // Delete key
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedPathId && onDeleteFeederPath) {
+        if (totalSelectedCount > 1) {
+          e.preventDefault();
+          if (onBatchDelete) {
+            onBatchDelete(multiSelection);
+          } else {
+            multiSelection.transformerIds.forEach(id => onDeleteTransformer(id));
+            multiSelection.switchIds.forEach(id => onDeleteSwitch?.(id));
+            multiSelection.annotationIds.forEach(id => onDeleteAnnotation?.(id));
+            multiSelection.pathIds.forEach(id => onDeleteFeederPath?.(id));
+          }
+          setMultiSelection({ transformerIds: [], switchIds: [], annotationIds: [], pathIds: [] });
+          onSelectTransformer(null);
+          onSelectPath?.(null);
+          onSelectSwitch?.(null);
+          onSelectAnnotation?.(null);
+        } else if (selectedPathId && onDeleteFeederPath) {
           e.preventDefault();
           onDeleteFeederPath(selectedPathId);
           onSelectPath?.(null);
+          setMultiSelection({ transformerIds: [], switchIds: [], annotationIds: [], pathIds: [] });
         } else if (selectedSwitchId && onDeleteSwitch) {
           e.preventDefault();
           onDeleteSwitch(selectedSwitchId);
           onSelectSwitch?.(null);
+          setMultiSelection({ transformerIds: [], switchIds: [], annotationIds: [], pathIds: [] });
         } else if (selectedAnnotationId && onDeleteAnnotation) {
           e.preventDefault();
           onDeleteAnnotation(selectedAnnotationId);
           onSelectAnnotation?.(null);
+          setMultiSelection({ transformerIds: [], switchIds: [], annotationIds: [], pathIds: [] });
         } else if (selectedId && onDeleteTransformer) {
           e.preventDefault();
           onDeleteTransformer(selectedId);
           onSelectTransformer(null);
+          setMultiSelection({ transformerIds: [], switchIds: [], annotationIds: [], pathIds: [] });
         }
       }
     };
@@ -342,10 +591,20 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     isReadOnly,
+    totalSelectedCount,
+    multiSelection,
+    transformers,
+    switches,
+    annotations,
+    feederPaths,
     selectedPathId,
     selectedSwitchId,
     selectedAnnotationId,
     selectedId,
+    canvasClickMode,
+    onBatchDelete,
+    onBatchDuplicate,
+    handleNudgeSelection,
     onDeleteFeederPath,
     onDeleteSwitch,
     onDeleteAnnotation,
@@ -358,7 +617,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
   // Global window listeners for butter-smooth dragging & panning
   useEffect(() => {
-    if (!isPanning && !draggingItem && !draggingVertex) return;
+    if (!isPanning && !draggingItem && !draggingVertex && !multiDragging && !marqueeBox) return;
 
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (isPanning) {
@@ -366,6 +625,51 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           x: e.clientX - startPan.x,
           y: e.clientY - startPan.y
         });
+      } else if (marqueeBox) {
+        const curCanvasPos = screenToCanvas(e.clientX, e.clientY);
+        setMarqueeBox(prev => prev ? { ...prev, currentX: curCanvasPos.x, currentY: curCanvasPos.y } : null);
+      } else if (multiDragging) {
+        const dx = (e.clientX - multiDragging.startX) / zoom;
+        const dy = (e.clientY - multiDragging.startY) / zoom;
+
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+          dragMovedRef.current = true;
+        }
+
+        const tfUpdates = multiDragging.items.transformers.map(t => {
+          const pt = toPortraitCoords(Math.round(t.initialX + dx), Math.round(t.initialY + dy));
+          return { id: t.id, x: pt.x, y: pt.y };
+        });
+
+        const swUpdates = multiDragging.items.switches.map(s => {
+          const pt = toPortraitCoords(Math.round(s.initialX + dx), Math.round(s.initialY + dy));
+          return { id: s.id, x: pt.x, y: pt.y };
+        });
+
+        const annUpdates = multiDragging.items.annotations.map(a => {
+          const pt = toPortraitCoords(Math.round(a.initialX + dx), Math.round(a.initialY + dy));
+          return { id: a.id, x: pt.x, y: pt.y };
+        });
+
+        const pathUpdates = multiDragging.items.feederPaths.map(p => {
+          const original = feederPaths.find(orig => orig.id === p.id);
+          const newPoints = p.initialPoints.map(pt => toPortraitCoords(Math.round(pt.x + dx), Math.round(pt.y + dy)));
+          return { ...(original || { id: p.id, points: newPoints }), points: newPoints };
+        });
+
+        if (onBatchUpdatePositions) {
+          onBatchUpdatePositions({
+            transformers: tfUpdates,
+            switches: swUpdates,
+            annotations: annUpdates,
+            feederPaths: pathUpdates
+          });
+        } else {
+          tfUpdates.forEach(u => onUpdateTransformerPosition(u.id, u.x, u.y));
+          swUpdates.forEach(u => onUpdateSwitchPosition?.(u.id, u.x, u.y));
+          annUpdates.forEach(u => onUpdateAnnotationPosition?.(u.id, u.x, u.y));
+          pathUpdates.forEach(u => onUpdateFeederPath?.(u));
+        }
       } else if (draggingItem) {
         const dx = (e.clientX - draggingItem.startX) / zoom;
         const dy = (e.clientY - draggingItem.startY) / zoom;
@@ -410,7 +714,60 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     };
 
     const handleWindowMouseUp = () => {
+      if (marqueeBox) {
+        const x1 = Math.min(marqueeBox.startX, marqueeBox.currentX);
+        const x2 = Math.max(marqueeBox.startX, marqueeBox.currentX);
+        const y1 = Math.min(marqueeBox.startY, marqueeBox.currentY);
+        const y2 = Math.max(marqueeBox.startY, marqueeBox.currentY);
+
+        if (x2 - x1 > 6 || y2 - y1 > 6) {
+          const matchedTransformers = displayData.transformers
+            .filter(t => t.x >= x1 - 18 && t.x <= x2 + 18 && t.y >= y1 - 18 && t.y <= y2 + 18)
+            .map(t => t.id);
+
+          const matchedSwitches = displayData.switches
+            .filter(s => s.x >= x1 - 18 && s.x <= x2 + 18 && s.y >= y1 - 18 && s.y <= y2 + 18)
+            .map(s => s.id);
+
+          const matchedAnnotations = displayData.annotations
+            .filter(a => a.x >= x1 - 35 && a.x <= x2 + 35 && a.y >= y1 - 18 && a.y <= y2 + 18)
+            .map(a => a.id);
+
+          const matchedPaths = displayData.feederPaths
+            .filter(p => p.points.some(pt => pt.x >= x1 - 12 && pt.x <= x2 + 12 && pt.y >= y1 - 12 && pt.y <= y2 + 12))
+            .map(p => p.id);
+
+          const newSel: MultiSelection = marqueeBox.isShift ? {
+            transformerIds: Array.from(new Set([...multiSelection.transformerIds, ...matchedTransformers])),
+            switchIds: Array.from(new Set([...multiSelection.switchIds, ...matchedSwitches])),
+            annotationIds: Array.from(new Set([...multiSelection.annotationIds, ...matchedAnnotations])),
+            pathIds: Array.from(new Set([...multiSelection.pathIds, ...matchedPaths]))
+          } : {
+            transformerIds: matchedTransformers,
+            switchIds: matchedSwitches,
+            annotationIds: matchedAnnotations,
+            pathIds: matchedPaths
+          };
+
+          setMultiSelection(newSel);
+
+          const total = newSel.transformerIds.length + newSel.switchIds.length + newSel.annotationIds.length + newSel.pathIds.length;
+          if (total === 1) {
+            if (newSel.transformerIds.length === 1) onSelectTransformer(transformers.find(t => t.id === newSel.transformerIds[0]) || null);
+            else if (newSel.pathIds.length === 1) onSelectPath?.(feederPaths.find(p => p.id === newSel.pathIds[0]) || null);
+            else if (newSel.switchIds.length === 1) onSelectSwitch?.(switches.find(s => s.id === newSel.switchIds[0]) || null);
+            else if (newSel.annotationIds.length === 1) onSelectAnnotation?.(annotations.find(a => a.id === newSel.annotationIds[0]) || null);
+          } else {
+            onSelectTransformer(null);
+            onSelectPath?.(null);
+            onSelectSwitch?.(null);
+            onSelectAnnotation?.(null);
+          }
+        }
+        setMarqueeBox(null);
+      }
       setIsPanning(false);
+      setMultiDragging(null);
       setDraggingItem(null);
       setDraggingVertex(null);
     };
@@ -422,7 +779,32 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
-  }, [isPanning, draggingItem, draggingVertex, startPan, zoom, feederPaths, onUpdateTransformerPosition, onUpdateSwitchPosition, onUpdateAnnotationPosition, onUpdateFeederPath]);
+  }, [
+    isPanning,
+    multiDragging,
+    marqueeBox,
+    draggingItem,
+    draggingVertex,
+    startPan,
+    zoom,
+    feederPaths,
+    displayData,
+    multiSelection,
+    transformers,
+    switches,
+    annotations,
+    toPortraitCoords,
+    screenToCanvas,
+    onBatchUpdatePositions,
+    onUpdateTransformerPosition,
+    onUpdateSwitchPosition,
+    onUpdateAnnotationPosition,
+    onUpdateFeederPath,
+    onSelectTransformer,
+    onSelectPath,
+    onSelectSwitch,
+    onSelectAnnotation
+  ]);
 
   // Zoom handlers (Centered on viewport)
   const handleZoomIn = () => {
@@ -706,8 +1088,20 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         return;
       }
 
+      if (canvasClickMode === 'marquee' || e.shiftKey) {
+        setMarqueeBox({
+          startX: coords.x,
+          startY: coords.y,
+          currentX: coords.x,
+          currentY: coords.y,
+          isShift: e.shiftKey
+        });
+        return;
+      }
+
       setIsPanning(true);
       setStartPan({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      setMultiSelection({ transformerIds: [], switchIds: [], annotationIds: [], pathIds: [] });
       onSelectTransformer(null);
       onSelectPath?.(null);
       onSelectSwitch?.(null);
@@ -715,27 +1109,135 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     }
   };
 
-  // Drag start helper for items
-  const startDrag = (
-    type: 'transformer' | 'switch' | 'annotation',
-    id: string,
-    initialX: number,
-    initialY: number,
+  // Drag start helper for items (หม้อแปลง, สวิตช์, ป้ายข้อความ, เส้นวงจร - เดี่ยวหรือหลายตัวพร้อมกัน)
+  const startDragMulti = (
+    clickedType: 'transformer' | 'switch' | 'annotation' | 'path',
+    clickedId: string,
     e: React.MouseEvent
   ) => {
     e.stopPropagation();
     if (isReadOnly || !isDraggable) return;
+
     dragMovedRef.current = false;
-    setDraggingItem({
-      type,
-      id,
+
+    // Shift หรือ Ctrl/Cmd: สลับการเลือก (Toggle Selection)
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      const isSelected = 
+        (clickedType === 'transformer' && multiSelection.transformerIds.includes(clickedId)) ||
+        (clickedType === 'switch' && multiSelection.switchIds.includes(clickedId)) ||
+        (clickedType === 'annotation' && multiSelection.annotationIds.includes(clickedId)) ||
+        (clickedType === 'path' && multiSelection.pathIds.includes(clickedId));
+
+      const newSel: MultiSelection = {
+        transformerIds: clickedType === 'transformer'
+          ? (isSelected ? multiSelection.transformerIds.filter(id => id !== clickedId) : [...multiSelection.transformerIds, clickedId])
+          : multiSelection.transformerIds,
+        switchIds: clickedType === 'switch'
+          ? (isSelected ? multiSelection.switchIds.filter(id => id !== clickedId) : [...multiSelection.switchIds, clickedId])
+          : multiSelection.switchIds,
+        annotationIds: clickedType === 'annotation'
+          ? (isSelected ? multiSelection.annotationIds.filter(id => id !== clickedId) : [...multiSelection.annotationIds, clickedId])
+          : multiSelection.annotationIds,
+        pathIds: clickedType === 'path'
+          ? (isSelected ? multiSelection.pathIds.filter(id => id !== clickedId) : [...multiSelection.pathIds, clickedId])
+          : multiSelection.pathIds
+      };
+
+      setMultiSelection(newSel);
+
+      const total = newSel.transformerIds.length + newSel.switchIds.length + newSel.annotationIds.length + newSel.pathIds.length;
+      if (total === 1) {
+        if (newSel.transformerIds.length === 1) onSelectTransformer(transformers.find(t => t.id === newSel.transformerIds[0]) || null);
+        else if (newSel.pathIds.length === 1) onSelectPath?.(feederPaths.find(p => p.id === newSel.pathIds[0]) || null);
+        else if (newSel.switchIds.length === 1) onSelectSwitch?.(switches.find(s => s.id === newSel.switchIds[0]) || null);
+        else if (newSel.annotationIds.length === 1) onSelectAnnotation?.(annotations.find(a => a.id === newSel.annotationIds[0]) || null);
+      } else {
+        onSelectTransformer(null);
+        onSelectPath?.(null);
+        onSelectSwitch?.(null);
+        onSelectAnnotation?.(null);
+      }
+      return;
+    }
+
+    // คลิกปกติ: ตรวจสอบว่าวัตถุที่กดเลือกอยู่ในรายการที่เลือกอยู่แล้วหรือไม่
+    let effectiveSel = multiSelection;
+    const isAlreadySelected = 
+      (clickedType === 'transformer' && multiSelection.transformerIds.includes(clickedId)) ||
+      (clickedType === 'switch' && multiSelection.switchIds.includes(clickedId)) ||
+      (clickedType === 'annotation' && multiSelection.annotationIds.includes(clickedId)) ||
+      (clickedType === 'path' && multiSelection.pathIds.includes(clickedId));
+
+    if (!isAlreadySelected) {
+      effectiveSel = {
+        transformerIds: clickedType === 'transformer' ? [clickedId] : [],
+        switchIds: clickedType === 'switch' ? [clickedId] : [],
+        annotationIds: clickedType === 'annotation' ? [clickedId] : [],
+        pathIds: clickedType === 'path' ? [clickedId] : []
+      };
+      setMultiSelection(effectiveSel);
+
+      if (clickedType === 'transformer') {
+        onSelectTransformer(transformers.find(t => t.id === clickedId) || null);
+        onSelectPath?.(null);
+        onSelectSwitch?.(null);
+        onSelectAnnotation?.(null);
+      } else if (clickedType === 'switch') {
+        onSelectSwitch?.(switches.find(s => s.id === clickedId) || null);
+        onSelectTransformer(null);
+        onSelectPath?.(null);
+        onSelectAnnotation?.(null);
+      } else if (clickedType === 'annotation') {
+        onSelectAnnotation?.(annotations.find(a => a.id === clickedId) || null);
+        onSelectTransformer(null);
+        onSelectPath?.(null);
+        onSelectSwitch?.(null);
+      } else if (clickedType === 'path') {
+        onSelectPath?.(feederPaths.find(p => p.id === clickedId) || null);
+        onSelectTransformer(null);
+        onSelectSwitch?.(null);
+        onSelectAnnotation?.(null);
+      }
+    }
+
+    // เตรียมรายการพิกัดเริ่มต้นสำหรับลากเลื่อนพร้อมกัน
+    const tItems = displayData.transformers
+      .filter(t => effectiveSel.transformerIds.includes(t.id))
+      .map(t => ({ id: t.id, initialX: t.x, initialY: t.y }));
+
+    const sItems = displayData.switches
+      .filter(s => effectiveSel.switchIds.includes(s.id))
+      .map(s => ({ id: s.id, initialX: s.x, initialY: s.y }));
+
+    const aItems = displayData.annotations
+      .filter(a => effectiveSel.annotationIds.includes(a.id))
+      .map(a => ({ id: a.id, initialX: a.x, initialY: a.y }));
+
+    const pItems = displayData.feederPaths
+      .filter(p => effectiveSel.pathIds.includes(p.id))
+      .map(p => ({ id: p.id, initialPoints: p.points.map(pt => ({ x: pt.x, y: pt.y })) }));
+
+    setMultiDragging({
       startX: e.clientX,
       startY: e.clientY,
-      initialX,
-      initialY,
-      currentX: initialX,
-      currentY: initialY
+      items: {
+        transformers: tItems,
+        switches: sItems,
+        annotations: aItems,
+        feederPaths: pItems
+      }
     });
+  };
+
+  // Backwards compatibility alias for single drag
+  const startDrag = (
+    type: 'transformer' | 'switch' | 'annotation',
+    id: string,
+    _initialX: number,
+    _initialY: number,
+    e: React.MouseEvent
+  ) => {
+    startDragMulti(type, id, e);
   };
 
   // Drag start helper for line vertex point
@@ -1041,6 +1543,22 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           {/* Editor-only tools */}
           {!isReadOnly && (
             <>
+              {/* Marquee Multi-Select Toggle Button */}
+              <button
+                id="btn-toggle-marquee"
+                onClick={() => {
+                  setCanvasClickMode(curr => curr === 'marquee' ? 'select' : 'marquee');
+                }}
+                title="โหมดคลุมเลือกหลายสัญลักษณ์ (Marquee Box) หรือกด Shift + ลากเมาส์บนผัง"
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  canvasClickMode === 'marquee'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800'
+                }`}
+              >
+                <BoxSelect className="w-3.5 h-3.5" />
+                <span>{canvasClickMode === 'marquee' ? 'กำลังคลุมเลือก' : 'เลือกกลุ่ม'}</span>
+              </button>
               {/* Line Edit Mode Toggle Button */}
               <button
                 id="btn-toggle-line-edit"
@@ -1458,6 +1976,136 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         </div>
       )}
 
+      {/* Floating Multi-Selection Control Bar (HUD) */}
+      {!isReadOnly && totalSelectedCount >= 2 && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 text-white backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-2xl border border-blue-500/80 flex flex-wrap items-center gap-3 animate-in fade-in slide-in-from-top-3 duration-200 text-xs">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-blue-600/30 text-blue-400 border border-blue-500/40">
+              <BoxSelect className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-white flex items-center gap-1.5">
+                <span>เลือกกลุ่ม</span>
+                <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-mono text-[11px] font-bold border border-blue-500/40">
+                  {totalSelectedCount} รายการ
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                {multiSelection.transformerIds.length > 0 && (
+                  <span className="text-amber-300 font-medium">⚡ หม้อแปลง {multiSelection.transformerIds.length}</span>
+                )}
+                {multiSelection.switchIds.length > 0 && (
+                  <span className="text-emerald-300 font-medium">🔲 สวิตช์ {multiSelection.switchIds.length}</span>
+                )}
+                {multiSelection.pathIds.length > 0 && (
+                  <span className="text-indigo-300 font-medium">〰️ เส้น {multiSelection.pathIds.length}</span>
+                )}
+                {multiSelection.annotationIds.length > 0 && (
+                  <span className="text-sky-300 font-medium">🏷️ ป้าย {multiSelection.annotationIds.length}</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="h-6 w-px bg-slate-700 mx-1 hidden sm:block" />
+
+          {/* Nudge Direction Buttons */}
+          <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/80">
+            <span className="text-[10px] text-slate-400 font-medium px-1.5 hidden md:inline">เลื่อน:</span>
+            <button
+              onClick={() => handleNudgeSelection(-nudgeStep, 0)}
+              title={`เลื่อนซ้าย ${nudgeStep}px (หรือกดปุ่มลูกศรซ้าย)`}
+              className="px-1.5 py-1 hover:bg-slate-700 active:scale-95 text-slate-200 rounded transition-all cursor-pointer font-bold"
+            >
+              ⬅️
+            </button>
+            <button
+              onClick={() => handleNudgeSelection(0, -nudgeStep)}
+              title={`เลื่อนขึ้น ${nudgeStep}px (หรือกดปุ่มลูกศรขึ้น)`}
+              className="px-1.5 py-1 hover:bg-slate-700 active:scale-95 text-slate-200 rounded transition-all cursor-pointer font-bold"
+            >
+              ⬆️
+            </button>
+            <button
+              onClick={() => handleNudgeSelection(0, nudgeStep)}
+              title={`เลื่อนลง ${nudgeStep}px (หรือกดปุ่มลูกศรลง)`}
+              className="px-1.5 py-1 hover:bg-slate-700 active:scale-95 text-slate-200 rounded transition-all cursor-pointer font-bold"
+            >
+              ⬇️
+            </button>
+            <button
+              onClick={() => handleNudgeSelection(nudgeStep, 0)}
+              title={`เลื่อนขวา ${nudgeStep}px (หรือกดปุ่มลูกศรขวา)`}
+              className="px-1.5 py-1 hover:bg-slate-700 active:scale-95 text-slate-200 rounded transition-all cursor-pointer font-bold"
+            >
+              ➡️
+            </button>
+
+            {/* Step size selector */}
+            <select
+              value={nudgeStep}
+              onChange={(e) => setNudgeStep(Number(e.target.value))}
+              className="bg-slate-900 border border-slate-700 text-slate-300 text-[10px] rounded px-1.5 py-0.5 ml-1 cursor-pointer"
+              title="ระยะการเลื่อนต่อการกด (Step)"
+            >
+              <option value={5}>5px</option>
+              <option value={10}>10px</option>
+              <option value={20}>20px</option>
+              <option value={50}>50px</option>
+            </select>
+          </div>
+
+          <div className="h-6 w-px bg-slate-700 mx-1 hidden sm:block" />
+
+          {/* Action Buttons: Duplicate, Delete, Deselect */}
+          <div className="flex items-center gap-1.5">
+            {onBatchDuplicate && (
+              <button
+                onClick={() => onBatchDuplicate(multiSelection)}
+                title="คัดลอก/ทำซ้ำรายการที่เลือกทั้งหมด (Ctrl+D)"
+                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-lg font-bold flex items-center gap-1 transition-all shadow-sm cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>ทำซ้ำ</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                if (onBatchDelete) {
+                  onBatchDelete(multiSelection);
+                } else {
+                  multiSelection.transformerIds.forEach(id => onDeleteTransformer(id));
+                  multiSelection.switchIds.forEach(id => onDeleteSwitch?.(id));
+                  multiSelection.annotationIds.forEach(id => onDeleteAnnotation?.(id));
+                  multiSelection.pathIds.forEach(id => onDeleteFeederPath?.(id));
+                }
+                setMultiSelection({ transformerIds: [], switchIds: [], annotationIds: [], pathIds: [] });
+              }}
+              title="ลบรายการที่เลือกทั้งหมด (Delete)"
+              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-lg font-bold flex items-center gap-1 transition-all shadow-sm cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>ลบ ({totalSelectedCount})</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setMultiSelection({ transformerIds: [], switchIds: [], annotationIds: [], pathIds: [] });
+                onSelectTransformer(null);
+                onSelectPath?.(null);
+                onSelectSwitch?.(null);
+                onSelectAnnotation?.(null);
+              }}
+              title="ยกเลิกการเลือก (Esc)"
+              className="p-1 hover:bg-white/20 rounded-lg text-white/80 transition-colors ml-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Legend & Guide Pill (Bottom Left) */}
       <div className="absolute bottom-4 left-4 z-20 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-xs flex flex-wrap items-center gap-3.5 text-slate-700 dark:text-slate-300">
         <div className="flex items-center gap-1.5">
@@ -1609,9 +2257,10 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
           {/* Feeder Path Lines Layer with Interactive Controls */}
           {displayData.feederPaths.map(path => {
-            const isSelected = selectedPathId === path.id;
+            const isMultiSelected = multiSelection.pathIds.includes(path.id);
+            const isSelected = selectedPathId === path.id || isMultiSelected;
             const isHovered = hoveredPathId === path.id;
-            const isLineEditing = !isReadOnly && (canvasClickMode === 'edit_line' || isSelected);
+            const isLineEditing = !isReadOnly && (canvasClickMode === 'edit_line' || (isSelected && totalSelectedCount === 1));
             const pointsStr = path.points.map(p => `${p.x},${p.y}`).join(' ');
             const lineColor = path.color || themeStyles.wire;
 
@@ -1621,16 +2270,27 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 onMouseEnter={() => setHoveredPathId(path.id)}
                 onMouseLeave={() => setHoveredPathId(null)}
               >
-                {/* Thick Transparent Hitbox for easier line selection */}
+                {/* Thick Transparent Hitbox for easier line selection & dragging */}
                 <polyline
                   points={pointsStr}
                   fill="none"
                   stroke="transparent"
                   strokeWidth={24}
                   className="cursor-pointer"
+                  onMouseDown={(e) => startDragMulti('path', path.id, e)}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (dragMovedRef.current) return;
+                    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
+                    setMultiSelection({
+                      transformerIds: [],
+                      switchIds: [],
+                      annotationIds: [],
+                      pathIds: [path.id]
+                    });
                     onSelectTransformer(null);
+                    onSelectSwitch?.(null);
+                    onSelectAnnotation?.(null);
                     onSelectPath?.(path);
                     if (!isReadOnly && canvasClickMode !== 'draw_line') {
                       setCanvasClickMode('edit_line');
@@ -1643,11 +2303,11 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   <polyline
                     points={pointsStr}
                     fill="none"
-                    stroke="#3b82f6"
-                    strokeWidth={(path.strokeWidth || 2.5) + 6}
+                    stroke={isMultiSelected ? "#0284c7" : "#3b82f6"}
+                    strokeWidth={(path.strokeWidth || 2.5) + (isMultiSelected ? 8 : 6)}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    opacity={isSelected ? 0.6 : 0.25}
+                    opacity={isSelected ? 0.7 : 0.25}
                     strokeDasharray={isSelected ? '6,4' : undefined}
                   />
                 )}
@@ -1662,9 +2322,20 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   strokeLinejoin="round"
                   strokeDasharray={path.style === 'dashed' ? '6,4' : undefined}
                   className="cursor-pointer"
+                  onMouseDown={(e) => startDragMulti('path', path.id, e)}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (dragMovedRef.current) return;
+                    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
+                    setMultiSelection({
+                      transformerIds: [],
+                      switchIds: [],
+                      annotationIds: [],
+                      pathIds: [path.id]
+                    });
                     onSelectTransformer(null);
+                    onSelectSwitch?.(null);
+                    onSelectAnnotation?.(null);
                     onSelectPath?.(path);
                     if (!isReadOnly && canvasClickMode !== 'draw_line') {
                       setCanvasClickMode('edit_line');
@@ -1802,10 +2473,11 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           {/* Feeder / Road Annotation Labels */}
           {displayData.annotations.map(label => {
             const isVertical = label.orientation === 'vertical';
-            const isSelected = selectedAnnotationId === label.id;
-            const isBeingDragged = draggingItem?.type === 'annotation' && draggingItem.id === label.id;
-            const curX = isBeingDragged ? draggingItem.currentX : label.x;
-            const curY = isBeingDragged ? draggingItem.currentY : label.y;
+            const isMultiSelected = multiSelection.annotationIds.includes(label.id);
+            const isSelected = selectedAnnotationId === label.id || isMultiSelected;
+            const isBeingDragged = (draggingItem?.type === 'annotation' && draggingItem.id === label.id) || (multiDragging?.items.annotations.some(x => x.id === label.id));
+            const curX = isBeingDragged && draggingItem ? draggingItem.currentX : label.x;
+            const curY = isBeingDragged && draggingItem ? draggingItem.currentY : label.y;
 
             const isLandmark = [
               'school', 'temple', 'hospital', 'government', 'makro', 'lotus', 'seven_eleven'
@@ -1906,6 +2578,13 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   if (dragMovedRef.current) return;
+                  if (e.shiftKey || e.ctrlKey || e.metaKey) return;
+                  setMultiSelection({
+                    transformerIds: [],
+                    switchIds: [],
+                    annotationIds: [label.id],
+                    pathIds: []
+                  });
                   onSelectTransformer(null);
                   onSelectPath?.(null);
                   onSelectSwitch?.(null);
@@ -1918,7 +2597,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   const original = annotations.find(orig => orig.id === label.id) || label;
                   onEditAnnotation?.(original);
                 }}
-                onMouseDown={(e) => startDrag('annotation', label.id, curX, curY, e)}
+                onMouseDown={(e) => startDragMulti('annotation', label.id, e)}
               >
                 {/* Large Transparent Hitbox for Smooth Dragging & Clicking */}
                 <rect
@@ -2244,8 +2923,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           {/* Switches and Cutouts Layer */}
           {displayData.switches.map(sw => {
             const isTag = sw.type === 'FEEDER_TAG';
-            const isBeingDragged = draggingItem?.type === 'switch' && draggingItem.id === sw.id;
-            const isSelected = selectedSwitchId === sw.id;
+            const isMultiSelected = multiSelection.switchIds.includes(sw.id);
+            const isBeingDragged = (draggingItem?.type === 'switch' && draggingItem.id === sw.id) || (multiDragging?.items.switches.some(x => x.id === sw.id));
+            const isSelected = selectedSwitchId === sw.id || isMultiSelected;
             const isOpened = sw.status === 'opened';
 
             return (
@@ -2258,13 +2938,20 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   if (dragMovedRef.current) return;
+                  if (e.shiftKey || e.ctrlKey || e.metaKey) return;
+                  setMultiSelection({
+                    transformerIds: [],
+                    switchIds: [sw.id],
+                    annotationIds: [],
+                    pathIds: []
+                  });
                   onSelectTransformer(null);
                   onSelectPath?.(null);
                   onSelectAnnotation?.(null);
                   const original = switches.find(orig => orig.id === sw.id) || sw;
                   onSelectSwitch?.(original);
                 }}
-                onMouseDown={(e) => startDrag('switch', sw.id, sw.x, sw.y, e)}
+                onMouseDown={(e) => startDragMulti('switch', sw.id, e)}
               >
                 {/* Selection Highlight Ring */}
                 {isSelected && (
@@ -2394,7 +3081,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
           {/* Transformer Nodes Layer */}
           {displayData.transformers.map(t => {
-            const isSelected = selectedId === t.id;
+            const isMultiSelected = multiSelection.transformerIds.includes(t.id);
+            const isSelected = selectedId === t.id || isMultiSelected;
             const isHovered = hoveredTransformer?.id === t.id;
             const isMatchSearch = searchQuery && (
               t.peaNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -2461,7 +3149,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             }
             const badgeY = -12;
 
-            const isBeingDragged = draggingItem?.type === 'transformer' && draggingItem.id === t.id;
+            const isBeingDragged = (draggingItem?.type === 'transformer' && draggingItem.id === t.id) || (multiDragging?.items.transformers.some(x => x.id === t.id));
             const quickActionY = effectivePos === 'bottom' ? textY + 44 : (effStemDir === 'bottom' ? 42 : 36);
 
             return (
@@ -2476,6 +3164,16 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   if (dragMovedRef.current) return;
+                  if (e.shiftKey || e.ctrlKey || e.metaKey) return;
+                  setMultiSelection({
+                    transformerIds: [t.id],
+                    switchIds: [],
+                    annotationIds: [],
+                    pathIds: []
+                  });
+                  onSelectPath?.(null);
+                  onSelectSwitch?.(null);
+                  onSelectAnnotation?.(null);
                   const original = transformers.find(orig => orig.id === t.id) || t;
                   onSelectTransformer(original);
                 }}
@@ -2487,7 +3185,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 }}
                 onMouseEnter={() => setHoveredTransformer(t)}
                 onMouseLeave={() => setHoveredTransformer(null)}
-                onMouseDown={(e) => startDrag('transformer', t.id, t.x, t.y, e)}
+                onMouseDown={(e) => startDragMulti('transformer', t.id, e)}
               >
                 {/* Real-time Coordinate Floating Badge during Drag */}
                 {isBeingDragged && (
@@ -2865,6 +3563,117 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
               </g>
             );
           })}
+
+          {/* Marquee Rubber-band Selection Box Preview */}
+          {marqueeBox && (
+            <g className="pointer-events-none">
+              <rect
+                x={Math.min(marqueeBox.startX, marqueeBox.currentX)}
+                y={Math.min(marqueeBox.startY, marqueeBox.currentY)}
+                width={Math.max(1, Math.abs(marqueeBox.currentX - marqueeBox.startX))}
+                height={Math.max(1, Math.abs(marqueeBox.currentY - marqueeBox.startY))}
+                fill="#3b82f6"
+                fillOpacity="0.15"
+                stroke="#2563eb"
+                strokeWidth="1.5"
+                strokeDasharray="5,4"
+                rx="4"
+              />
+            </g>
+          )}
+
+          {/* Group Selection Bounding Box & Drag Handle */}
+          {selectedBounds && totalSelectedCount >= 2 && (
+            <g className="pointer-events-auto">
+              {/* Outer Dashed Boundary Box */}
+              <rect
+                x={selectedBounds.minX}
+                y={selectedBounds.minY}
+                width={selectedBounds.width}
+                height={selectedBounds.height}
+                fill="#0284c7"
+                fillOpacity="0.05"
+                stroke="#0284c7"
+                strokeWidth="1.8"
+                strokeDasharray="6,4"
+                rx="8"
+                className="cursor-move"
+                onMouseDown={(e) => {
+                  const firstTf = multiSelection.transformerIds[0];
+                  const firstSw = multiSelection.switchIds[0];
+                  const firstPath = multiSelection.pathIds[0];
+                  const firstAnn = multiSelection.annotationIds[0];
+                  if (firstTf) startDragMulti('transformer', firstTf, e);
+                  else if (firstSw) startDragMulti('switch', firstSw, e);
+                  else if (firstPath) startDragMulti('path', firstPath, e);
+                  else if (firstAnn) startDragMulti('annotation', firstAnn, e);
+                }}
+              />
+
+              {/* Corner brackets for CAD styling */}
+              <path
+                d={`M ${selectedBounds.minX + 10} ${selectedBounds.minY} L ${selectedBounds.minX} ${selectedBounds.minY} L ${selectedBounds.minX} ${selectedBounds.minY + 10}`}
+                fill="none"
+                stroke="#0284c7"
+                strokeWidth="2.5"
+              />
+              <path
+                d={`M ${selectedBounds.maxX - 10} ${selectedBounds.minY} L ${selectedBounds.maxX} ${selectedBounds.minY} L ${selectedBounds.maxX} ${selectedBounds.minY + 10}`}
+                fill="none"
+                stroke="#0284c7"
+                strokeWidth="2.5"
+              />
+              <path
+                d={`M ${selectedBounds.minX + 10} ${selectedBounds.maxY} L ${selectedBounds.minX} ${selectedBounds.maxY} L ${selectedBounds.minX} ${selectedBounds.maxY - 10}`}
+                fill="none"
+                stroke="#0284c7"
+                strokeWidth="2.5"
+              />
+              <path
+                d={`M ${selectedBounds.maxX - 10} ${selectedBounds.maxY} L ${selectedBounds.maxX} ${selectedBounds.maxY} L ${selectedBounds.maxX} ${selectedBounds.maxY - 10}`}
+                fill="none"
+                stroke="#0284c7"
+                strokeWidth="2.5"
+              />
+
+              {/* Top Move Handle Badge */}
+              <g
+                transform={`translate(${selectedBounds.minX}, ${selectedBounds.minY - 26})`}
+                className="cursor-move group"
+                onMouseDown={(e) => {
+                  const firstTf = multiSelection.transformerIds[0];
+                  const firstSw = multiSelection.switchIds[0];
+                  const firstPath = multiSelection.pathIds[0];
+                  const firstAnn = multiSelection.annotationIds[0];
+                  if (firstTf) startDragMulti('transformer', firstTf, e);
+                  else if (firstSw) startDragMulti('switch', firstSw, e);
+                  else if (firstPath) startDragMulti('path', firstPath, e);
+                  else if (firstAnn) startDragMulti('annotation', firstAnn, e);
+                }}
+              >
+                <rect
+                  x="0"
+                  y="0"
+                  width="130"
+                  height="22"
+                  rx="6"
+                  fill="#0284c7"
+                  className="group-hover:fill-sky-600 transition-colors shadow-md"
+                />
+                <text
+                  x="65"
+                  y="15"
+                  fill="#ffffff"
+                  fontSize="10.5"
+                  fontWeight="bold"
+                  textAnchor="middle"
+                  fontFamily="sans-serif"
+                >
+                  ✢ ลากย้าย ({totalSelectedCount} รายการ)
+                </text>
+              </g>
+            </g>
+          )}
           </g>
         </svg>
 

@@ -745,6 +745,149 @@ export default function App() {
     );
   }, [setAnnotations]);
 
+  // Batch Handlers for Multi-Selection Move, Delete, and Duplicate
+  const handleBatchUpdatePositions = useCallback((updates: {
+    transformers?: { id: string; x: number; y: number }[];
+    switches?: { id: string; x: number; y: number }[];
+    annotations?: { id: string; x: number; y: number }[];
+    feederPaths?: FeederPath[];
+  }) => {
+    if (isReadOnly) return;
+    if (updates.transformers && updates.transformers.length > 0) {
+      const map = new Map(updates.transformers.map(u => [u.id, u]));
+      setTransformers(prev => prev.map(t => {
+        const u = map.get(t.id);
+        return u ? { ...t, x: u.x, y: u.y } : t;
+      }));
+    }
+    if (updates.switches && updates.switches.length > 0) {
+      const map = new Map(updates.switches.map(u => [u.id, u]));
+      setSwitches(prev => prev.map(s => {
+        const u = map.get(s.id);
+        return u ? { ...s, x: u.x, y: u.y } : s;
+      }));
+    }
+    if (updates.annotations && updates.annotations.length > 0) {
+      const map = new Map(updates.annotations.map(u => [u.id, u]));
+      setAnnotations(prev => prev.map(a => {
+        const u = map.get(a.id);
+        return u ? { ...a, x: u.x, y: u.y } : a;
+      }));
+    }
+    if (updates.feederPaths && updates.feederPaths.length > 0) {
+      const map = new Map(updates.feederPaths.map(p => [p.id, p]));
+      setFeederPaths(prev => prev.map(p => map.get(p.id) || p));
+    }
+  }, [isReadOnly, setTransformers, setSwitches, setAnnotations, setFeederPaths]);
+
+  const handleBatchDelete = useCallback((selection: {
+    transformerIds: string[];
+    switchIds: string[];
+    annotationIds: string[];
+    pathIds: string[];
+  }) => {
+    if (isReadOnly) return;
+    const total = selection.transformerIds.length + selection.switchIds.length + selection.annotationIds.length + selection.pathIds.length;
+    if (total === 0) return;
+
+    if (selection.transformerIds.length > 0) {
+      const set = new Set(selection.transformerIds);
+      setTransformers(prev => prev.filter(t => !set.has(t.id)));
+    }
+    if (selection.switchIds.length > 0) {
+      const set = new Set(selection.switchIds);
+      setSwitches(prev => prev.filter(s => !set.has(s.id)));
+    }
+    if (selection.annotationIds.length > 0) {
+      const set = new Set(selection.annotationIds);
+      setAnnotations(prev => prev.filter(a => !set.has(a.id)));
+    }
+    if (selection.pathIds.length > 0) {
+      const set = new Set(selection.pathIds);
+      setFeederPaths(prev => prev.filter(p => !set.has(p.id)));
+    }
+    setSelectedTransformer(null);
+    setSelectedPath(null);
+    setSelectedSwitch(null);
+    setSelectedAnnotation(null);
+    showToast(`ลบรายการที่เลือก ${total} รายการ เรียบร้อยแล้ว`, 'info');
+  }, [isReadOnly, setTransformers, setSwitches, setAnnotations, setFeederPaths, showToast]);
+
+  const handleBatchDuplicate = useCallback((selection: {
+    transformerIds: string[];
+    switchIds: string[];
+    annotationIds: string[];
+    pathIds: string[];
+  }) => {
+    if (isReadOnly) return;
+    const offset = 20;
+
+    const newTransformers: Transformer[] = [];
+    const newSwitches: SwitchNode[] = [];
+    const newAnnotations: AnnotationLabel[] = [];
+    const newPaths: FeederPath[] = [];
+
+    if (selection.transformerIds.length > 0) {
+      const set = new Set(selection.transformerIds);
+      transformers.filter(t => set.has(t.id)).forEach(t => {
+        newTransformers.push({
+          ...t,
+          id: `tf-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: `${t.name} (สำเนา)`,
+          x: t.x + offset,
+          y: t.y + offset
+        });
+      });
+      setTransformers(prev => [...prev, ...newTransformers]);
+    }
+
+    if (selection.switchIds.length > 0) {
+      const set = new Set(selection.switchIds);
+      switches.filter(s => set.has(s.id)).forEach(s => {
+        newSwitches.push({
+          ...s,
+          id: `sw-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          code: `${s.code}-สำเนา`,
+          x: s.x + offset,
+          y: s.y + offset
+        });
+      });
+      setSwitches(prev => [...prev, ...newSwitches]);
+    }
+
+    if (selection.annotationIds.length > 0) {
+      const set = new Set(selection.annotationIds);
+      annotations.filter(a => set.has(a.id)).forEach(a => {
+        newAnnotations.push({
+          ...a,
+          id: `ann-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          text: `${a.text} (สำเนา)`,
+          x: a.x + offset,
+          y: a.y + offset
+        });
+      });
+      setAnnotations(prev => [...prev, ...newAnnotations]);
+    }
+
+    if (selection.pathIds.length > 0) {
+      const set = new Set(selection.pathIds);
+      feederPaths.filter(p => set.has(p.id)).forEach(p => {
+        newPaths.push({
+          ...p,
+          id: `path-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: p.name ? `${p.name} (สำเนา)` : undefined,
+          points: p.points.map(pt => ({ x: pt.x + offset, y: pt.y + offset }))
+        });
+      });
+      setFeederPaths(prev => [...prev, ...newPaths]);
+    }
+
+    const total = newTransformers.length + newSwitches.length + newAnnotations.length + newPaths.length;
+    if (total > 0) {
+      showToast(`ทำซ้ำรายการที่เลือก ${total} รายการ เรียบร้อยแล้ว`);
+    }
+  }, [isReadOnly, transformers, switches, annotations, feederPaths, setTransformers, setSwitches, setAnnotations, setFeederPaths, showToast]);
+
   // Feeder Path Handlers
   const handleUpdateFeederPath = useCallback((updated: FeederPath) => {
     if (isReadOnly) return;
@@ -1123,6 +1266,9 @@ export default function App() {
               onEditTransformer={isReadOnly ? () => {} : handleEditTransformer}
               onDeleteTransformer={isReadOnly ? () => {} : handleDeleteTransformer}
               onAddTransformerAt={isReadOnly ? () => {} : (x, y) => handleOpenAddModal({ x, y })}
+              onBatchUpdatePositions={isReadOnly ? undefined : handleBatchUpdatePositions}
+              onBatchDelete={isReadOnly ? undefined : handleBatchDelete}
+              onBatchDuplicate={isReadOnly ? undefined : handleBatchDuplicate}
             />
 
             {/* Selected Transformer Detail Drawer */}
