@@ -14,6 +14,8 @@ import {
   Unlock, 
   Share2,
   Eye,
+  EyeOff,
+  Check,
   ChevronDown,
   Layers,
   ExternalLink,
@@ -35,6 +37,8 @@ interface NavbarProps {
   isReadOnly?: boolean;
   transformerCount: number;
   totalKva: number;
+  filterType?: 'all' | 'public' | 'private' | 'none';
+  onFilterTypeChange?: (type: 'all' | 'public' | 'private' | 'none') => void;
   sheetConfig: GoogleSheetConfig;
   sheetTitle?: string;
   sheetNo?: string;
@@ -71,6 +75,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isReadOnly = false,
   transformerCount,
   totalKva,
+  filterType = 'all',
+  onFilterTypeChange,
   sheetConfig,
   sheetTitle = 'ไลน์สวนดอก',
   sheetNo = '(1)',
@@ -96,14 +102,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [isNavFilterOpen, setIsNavFilterOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const navFilterRef = useRef<HTMLDivElement>(null);
 
-  // Close search popover on outside click
+  // Close search popover & filter popover on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
         setIsSearchFocused(false);
+      }
+      if (navFilterRef.current && !navFilterRef.current.contains(e.target as Node)) {
+        setIsNavFilterOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -452,6 +463,138 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         )}
       </div>
+
+      {/* Transformer Layer Filter (เปิด/ปิดแสดงสัญลักษณ์หม้อแปลง) */}
+      {onFilterTypeChange && (
+        <div ref={navFilterRef} className="relative hidden md:block">
+          <button
+            id="btn-navbar-filter-transformer"
+            onClick={() => setIsNavFilterOpen(!isNavFilterOpen)}
+            title="เลือกแสดงหม้อแปลง: ทั้งหมด, เฉพาะ กฟภ., หรือ เฉพาะผู้ใช้ไฟ"
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
+              filterType === 'public'
+                ? 'bg-purple-50 text-purple-700 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700 shadow-2xs'
+                : filterType === 'private'
+                ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-700 shadow-2xs'
+                : filterType === 'none'
+                ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-700 shadow-2xs'
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-slate-300 dark:border-slate-700'
+            }`}
+          >
+            {filterType === 'none' ? (
+              <EyeOff className="w-3.5 h-3.5 text-rose-500" />
+            ) : (
+              <Eye className={`w-3.5 h-3.5 ${
+                filterType === 'public' ? 'text-purple-600 dark:text-purple-400' :
+                filterType === 'private' ? 'text-blue-600 dark:text-blue-400' :
+                'text-slate-500 dark:text-slate-400'
+              }`} />
+            )}
+            <span className="text-xs">
+              {filterType === 'public' ? 'กฟภ. อย่างเดียว' :
+               filterType === 'private' ? 'ผู้ใช้ไฟ อย่างเดียว' :
+               filterType === 'none' ? 'ซ่อนหม้อแปลง' :
+               'หม้อแปลง: ทั้งหมด'}
+            </span>
+            <ChevronDown className="w-3 h-3 text-slate-400" />
+          </button>
+
+          {isNavFilterOpen && (
+            <div 
+              className="absolute left-0 top-full mt-1.5 w-60 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs divide-y divide-slate-100 dark:divide-slate-700/60"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-3 py-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                เลือกการแสดงสัญลักษณ์หม้อแปลง
+              </div>
+              <div className="py-1">
+                <button
+                  onClick={() => {
+                    onFilterTypeChange('all');
+                    setIsNavFilterOpen(false);
+                  }}
+                  className={`w-full px-3 py-1.5 text-left flex items-center justify-between cursor-pointer ${
+                    filterType === 'all' || !filterType
+                      ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs">🔘</span>
+                    <div>
+                      <div>แสดงทั้งหมด (All)</div>
+                      <div className="text-[10px] text-slate-400 font-normal">ทั้ง กฟภ. และ ผู้ใช้ไฟ</div>
+                    </div>
+                  </div>
+                  {(filterType === 'all' || !filterType) && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                </button>
+                <button
+                  onClick={() => {
+                    onFilterTypeChange('public');
+                    setIsNavFilterOpen(false);
+                  }}
+                  className={`w-full px-3 py-1.5 text-left flex items-center justify-between cursor-pointer ${
+                    filterType === 'public'
+                      ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-purple-600 shrink-0"></span>
+                    <div>
+                      <div className="text-purple-700 dark:text-purple-300 font-semibold">กฟภ. อย่างเดียว</div>
+                      <div className="text-[10px] text-slate-400 font-normal">จำหน่ายทั่วไป</div>
+                    </div>
+                  </div>
+                  {filterType === 'public' && <Check className="w-3.5 h-3.5 text-purple-600" />}
+                </button>
+                <button
+                  onClick={() => {
+                    onFilterTypeChange('private');
+                    setIsNavFilterOpen(false);
+                  }}
+                  className={`w-full px-3 py-1.5 text-left flex items-center justify-between cursor-pointer ${
+                    filterType === 'private'
+                      ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0"></span>
+                    <div>
+                      <div className="text-blue-700 dark:text-blue-300 font-semibold">ผู้ใช้ไฟ อย่างเดียว</div>
+                      <div className="text-[10px] text-slate-400 font-normal">เฉพาะราย</div>
+                    </div>
+                  </div>
+                  {filterType === 'private' && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                </button>
+              </div>
+              <div className="py-1">
+                <button
+                  onClick={() => {
+                    onFilterTypeChange('none');
+                    setIsNavFilterOpen(false);
+                  }}
+                  className={`w-full px-3 py-1.5 text-left flex items-center justify-between cursor-pointer ${
+                    filterType === 'none'
+                      ? 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 font-bold'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <EyeOff className="w-3.5 h-3.5 text-rose-500" />
+                    <div>
+                      <div>ซ่อนหม้อแปลงทั้งหมด</div>
+                      <div className="text-[10px] text-slate-400 font-normal">ดูเฉพาะสายป้อนและสวิตช์</div>
+                    </div>
+                  </div>
+                  {filterType === 'none' && <Check className="w-3.5 h-3.5 text-rose-600" />}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 3. View Switcher Tabs */}
       <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700/60">

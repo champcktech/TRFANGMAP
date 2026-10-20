@@ -318,11 +318,14 @@ export default function App() {
     }));
   }, [updateActiveSheet]);
 
-  // Persist sheets in storage
+  // Persist sheets in storage (debounced to prevent UI lag during dragging)
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_SHEETS, JSON.stringify(sheets));
-    } catch (e) {}
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY_SHEETS, JSON.stringify(sheets));
+      } catch (e) {}
+    }, 400);
+    return () => clearTimeout(timer);
   }, [sheets]);
 
   useEffect(() => {
@@ -349,7 +352,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'canvas' | 'table' | 'stats'>('canvas');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterKva, setFilterKva] = useState<number | null>(null);
-  const [filterType, setFilterType] = useState<'all' | 'public' | 'private'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'public' | 'private' | 'none'>('all');
   const [isDraggable, setIsDraggable] = useState(true);
 
   // Read-only share mode (auto-detected from URL or toggled by user)
@@ -753,32 +756,46 @@ export default function App() {
     feederPaths?: FeederPath[];
   }) => {
     if (isReadOnly) return;
-    if (updates.transformers && updates.transformers.length > 0) {
-      const map = new Map(updates.transformers.map(u => [u.id, u]));
-      setTransformers(prev => prev.map(t => {
-        const u = map.get(t.id);
-        return u ? { ...t, x: u.x, y: u.y } : t;
-      }));
-    }
-    if (updates.switches && updates.switches.length > 0) {
-      const map = new Map(updates.switches.map(u => [u.id, u]));
-      setSwitches(prev => prev.map(s => {
-        const u = map.get(s.id);
-        return u ? { ...s, x: u.x, y: u.y } : s;
-      }));
-    }
-    if (updates.annotations && updates.annotations.length > 0) {
-      const map = new Map(updates.annotations.map(u => [u.id, u]));
-      setAnnotations(prev => prev.map(a => {
-        const u = map.get(a.id);
-        return u ? { ...a, x: u.x, y: u.y } : a;
-      }));
-    }
-    if (updates.feederPaths && updates.feederPaths.length > 0) {
-      const map = new Map(updates.feederPaths.map(p => [p.id, p]));
-      setFeederPaths(prev => prev.map(p => map.get(p.id) || p));
-    }
-  }, [isReadOnly, setTransformers, setSwitches, setAnnotations, setFeederPaths]);
+    updateActiveSheet(sheet => {
+      let tfs = sheet.transformers || [];
+      let sws = sheet.switches || [];
+      let anns = sheet.annotations || [];
+      let paths = sheet.feederPaths || [];
+
+      if (updates.transformers && updates.transformers.length > 0) {
+        const map = new Map(updates.transformers.map(u => [u.id, u]));
+        tfs = tfs.map(t => {
+          const u = map.get(t.id);
+          return u ? { ...t, x: u.x, y: u.y } : t;
+        });
+      }
+      if (updates.switches && updates.switches.length > 0) {
+        const map = new Map(updates.switches.map(u => [u.id, u]));
+        sws = sws.map(s => {
+          const u = map.get(s.id);
+          return u ? { ...s, x: u.x, y: u.y } : s;
+        });
+      }
+      if (updates.annotations && updates.annotations.length > 0) {
+        const map = new Map(updates.annotations.map(u => [u.id, u]));
+        anns = anns.map(a => {
+          const u = map.get(a.id);
+          return u ? { ...a, x: u.x, y: u.y } : a;
+        });
+      }
+      if (updates.feederPaths && updates.feederPaths.length > 0) {
+        const map = new Map(updates.feederPaths.map(p => [p.id, p]));
+        paths = paths.map(p => map.get(p.id) || p);
+      }
+
+      return {
+        transformers: tfs,
+        switches: sws,
+        annotations: anns,
+        feederPaths: paths
+      };
+    });
+  }, [isReadOnly, updateActiveSheet]);
 
   const handleBatchDelete = useCallback((selection: {
     transformerIds: string[];
@@ -1159,6 +1176,8 @@ export default function App() {
         isReadOnly={isReadOnly}
         transformerCount={transformers.length}
         totalKva={totalKva}
+        filterType={filterType}
+        onFilterTypeChange={setFilterType}
         sheetConfig={sheetConfig}
         sheetTitle={activeSheet.title}
         sheetNo={activeSheet.sheetNo}
@@ -1213,6 +1232,7 @@ export default function App() {
               searchQuery={searchQuery}
               filterKva={filterKva}
               filterType={filterType}
+              onFilterTypeChange={setFilterType}
               theme={theme}
               isDraggable={isDraggable}
               onToggleDraggable={handleToggleDraggable}

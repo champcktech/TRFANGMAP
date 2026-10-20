@@ -15,6 +15,8 @@ import {
   Edit3, 
   Trash2, 
   Eye, 
+  EyeOff,
+  Filter,
   Move, 
   Zap,
   Info,
@@ -58,7 +60,8 @@ interface TransformerCanvasProps {
   selectedAnnotationId?: string | null;
   searchQuery: string;
   filterKva: number | null;
-  filterType: 'all' | 'public' | 'private';
+  filterType?: 'all' | 'public' | 'private' | 'none';
+  onFilterTypeChange?: (type: 'all' | 'public' | 'private' | 'none') => void;
   theme: 'white' | 'blueprint' | 'dark';
   isDraggable: boolean;
   onToggleDraggable?: () => void;
@@ -104,7 +107,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   selectedAnnotationId,
   searchQuery,
   filterKva,
-  filterType,
+  filterType = 'all',
+  onFilterTypeChange,
   theme,
   isDraggable,
   onToggleDraggable,
@@ -161,19 +165,39 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     startY: number;
     initialX: number;
     initialY: number;
+    dx: number;
+    dy: number;
   } | null>(null);
+
+  const draggingVertexRef = useRef(draggingVertex);
+  draggingVertexRef.current = draggingVertex;
 
   // Drawing new line state
   const [drawingPoints, setDrawingPoints] = useState<{ x: number; y: number }[]>([]);
   const [mouseCanvasPos, setMouseCanvasPos] = useState<{ x: number; y: number } | null>(null);
 
   const dragMovedRef = useRef<boolean>(false);
+  const dragRafRef = useRef<number | null>(null);
+  const hasUserPannedOrZoomedRef = useRef<boolean>(false);
   const [hoveredTransformer, setHoveredTransformer] = useState<Transformer | null>(null);
   const [hoveredPathId, setHoveredPathId] = useState<string | null>(null);
   const [canvasClickMode, setCanvasClickMode] = useState<'select' | 'marquee' | 'add' | 'add_switch' | 'add_annotation' | 'add_landmark' | 'edit_line' | 'draw_line'>('select');
   const [pendingLandmarkType, setPendingLandmarkType] = useState<AnnotationType | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close menus on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node)) {
+        setIsFilterMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   // Multi-Selection State (รองรับการเลือกและย้ายหม้อแปลง, สวิตช์, เส้นวงจร, ป้ายข้อความ ทีละหลายๆ สัญลักษณ์พร้อมกัน)
   const [multiSelection, setMultiSelection] = useState<MultiSelection>({
@@ -183,10 +207,12 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     pathIds: selectedPathId ? [selectedPathId] : []
   });
 
-  // Multi-Dragging State
+  // Multi-Dragging State (เคลื่อนย้ายสัญลักษณ์เดี่ยวหรือกลุ่มแบบ Real-Time ไหลลื่น 60fps ไม่มีกระตุก ไม่เวียนหัว)
   const [multiDragging, setMultiDragging] = useState<{
     startX: number;
     startY: number;
+    dx: number;
+    dy: number;
     items: {
       transformers: { id: string; initialX: number; initialY: number }[];
       switches: { id: string; initialX: number; initialY: number }[];
@@ -194,6 +220,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       feederPaths: { id: string; initialPoints: { x: number; y: number }[] }[];
     };
   } | null>(null);
+
+  const multiDraggingRef = useRef(multiDragging);
+  multiDraggingRef.current = multiDragging;
 
   // Marquee Selection Box (Rubber-band selection)
   const [marqueeBox, setMarqueeBox] = useState<{
@@ -333,6 +362,24 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       annotations
     };
   }, [canvasOrientation, transformers, switches, feederPaths, annotations]);
+
+  // นับจำนวนหม้อแปลงแยกประเภท กฟภ. และ ผู้ใช้ไฟ
+  const publicCount = useMemo(() => {
+    return displayData.transformers.filter(t => t.type === 'public').length;
+  }, [displayData.transformers]);
+
+  const privateCount = useMemo(() => {
+    return displayData.transformers.filter(t => t.type === 'private').length;
+  }, [displayData.transformers]);
+
+  // ตัวกรองความสามารถในการมองเห็นของหม้อแปลง (All, Public Only, Private Only, None)
+  const isTransformerVisible = useCallback((t: Transformer) => {
+    if (filterKva && t.kva !== filterKva) return false;
+    if (filterType === 'none') return false;
+    if (filterType === 'public' && t.type !== 'public') return false;
+    if (filterType === 'private' && t.type !== 'private') return false;
+    return true;
+  }, [filterKva, filterType]);
 
   // Helper แปลงพิกัดจากหน้าจอ Canvas กลับไปเป็นพิกัดต้นฉบับ (Portrait Storage)
   const toPortraitCoords = useCallback((x: number, y: number) => {
@@ -506,7 +553,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         e.preventDefault();
         setMultiSelection({
-          transformerIds: transformers.map(t => t.id),
+          transformerIds: transformers.filter(isTransformerVisible).map(t => t.id),
           switchIds: switches.map(s => s.id),
           annotationIds: annotations.map(a => a.id),
           pathIds: feederPaths.map(p => p.id)
@@ -615,12 +662,13 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     onSelectTransformer
   ]);
 
-  // Global window listeners for butter-smooth dragging & panning
+  // Global window listeners for butter-smooth dragging & panning (60fps ultra-fluid, zero lag, zero jitter)
   useEffect(() => {
     if (!isPanning && !draggingItem && !draggingVertex && !multiDragging && !marqueeBox) return;
 
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (isPanning) {
+        hasUserPannedOrZoomedRef.current = true;
         setPan({
           x: e.clientX - startPan.x,
           y: e.clientY - startPan.y
@@ -628,92 +676,49 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       } else if (marqueeBox) {
         const curCanvasPos = screenToCanvas(e.clientX, e.clientY);
         setMarqueeBox(prev => prev ? { ...prev, currentX: curCanvasPos.x, currentY: curCanvasPos.y } : null);
-      } else if (multiDragging) {
-        const dx = (e.clientX - multiDragging.startX) / zoom;
-        const dy = (e.clientY - multiDragging.startY) / zoom;
+      } else if (multiDraggingRef.current) {
+        const currentMD = multiDraggingRef.current;
+        const curZoom = zoomRef.current || 1;
+        const dx = (e.clientX - currentMD.startX) / curZoom;
+        const dy = (e.clientY - currentMD.startY) / curZoom;
 
         if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
           dragMovedRef.current = true;
         }
 
-        const tfUpdates = multiDragging.items.transformers.map(t => {
-          const pt = toPortraitCoords(Math.round(t.initialX + dx), Math.round(t.initialY + dy));
-          return { id: t.id, x: pt.x, y: pt.y };
+        const updated = { ...currentMD, dx, dy };
+        multiDraggingRef.current = updated;
+
+        if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = requestAnimationFrame(() => {
+          setMultiDragging(updated);
         });
-
-        const swUpdates = multiDragging.items.switches.map(s => {
-          const pt = toPortraitCoords(Math.round(s.initialX + dx), Math.round(s.initialY + dy));
-          return { id: s.id, x: pt.x, y: pt.y };
-        });
-
-        const annUpdates = multiDragging.items.annotations.map(a => {
-          const pt = toPortraitCoords(Math.round(a.initialX + dx), Math.round(a.initialY + dy));
-          return { id: a.id, x: pt.x, y: pt.y };
-        });
-
-        const pathUpdates = multiDragging.items.feederPaths.map(p => {
-          const original = feederPaths.find(orig => orig.id === p.id);
-          const newPoints = p.initialPoints.map(pt => toPortraitCoords(Math.round(pt.x + dx), Math.round(pt.y + dy)));
-          return { ...(original || { id: p.id, points: newPoints }), points: newPoints };
-        });
-
-        if (onBatchUpdatePositions) {
-          onBatchUpdatePositions({
-            transformers: tfUpdates,
-            switches: swUpdates,
-            annotations: annUpdates,
-            feederPaths: pathUpdates
-          });
-        } else {
-          tfUpdates.forEach(u => onUpdateTransformerPosition(u.id, u.x, u.y));
-          swUpdates.forEach(u => onUpdateSwitchPosition?.(u.id, u.x, u.y));
-          annUpdates.forEach(u => onUpdateAnnotationPosition?.(u.id, u.x, u.y));
-          pathUpdates.forEach(u => onUpdateFeederPath?.(u));
-        }
-      } else if (draggingItem) {
-        const dx = (e.clientX - draggingItem.startX) / zoom;
-        const dy = (e.clientY - draggingItem.startY) / zoom;
-        
-        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-          dragMovedRef.current = true;
-        }
-
-        const newX = Math.round(draggingItem.initialX + dx);
-        const newY = Math.round(draggingItem.initialY + dy);
-
-        setDraggingItem(prev => prev ? { ...prev, currentX: newX, currentY: newY } : null);
-
-        const pt = toPortraitCoords(newX, newY);
-
-        if (draggingItem.type === 'transformer') {
-          onUpdateTransformerPosition(draggingItem.id, pt.x, pt.y);
-        } else if (draggingItem.type === 'switch' && onUpdateSwitchPosition) {
-          onUpdateSwitchPosition(draggingItem.id, pt.x, pt.y);
-        } else if (draggingItem.type === 'annotation' && onUpdateAnnotationPosition) {
-          onUpdateAnnotationPosition(draggingItem.id, pt.x, pt.y);
-        }
-      } else if (draggingVertex && onUpdateFeederPath) {
-        const dx = (e.clientX - draggingVertex.startX) / zoom;
-        const dy = (e.clientY - draggingVertex.startY) / zoom;
+      } else if (draggingVertexRef.current) {
+        const currentV = draggingVertexRef.current;
+        const curZoom = zoomRef.current || 1;
+        const dx = (e.clientX - currentV.startX) / curZoom;
+        const dy = (e.clientY - currentV.startY) / curZoom;
 
         if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
           dragMovedRef.current = true;
         }
 
-        const newX = Math.round(draggingVertex.initialX + dx);
-        const newY = Math.round(draggingVertex.initialY + dy);
+        const updated = { ...currentV, dx, dy };
+        draggingVertexRef.current = updated;
 
-        const targetPath = feederPaths.find(p => p.id === draggingVertex.pathId);
-        if (targetPath) {
-          const pt = toPortraitCoords(newX, newY);
-          const newPoints = [...targetPath.points];
-          newPoints[draggingVertex.pointIndex] = { x: pt.x, y: pt.y };
-          onUpdateFeederPath({ ...targetPath, points: newPoints });
-        }
+        if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = requestAnimationFrame(() => {
+          setDraggingVertex(updated);
+        });
       }
     };
 
     const handleWindowMouseUp = () => {
+      if (dragRafRef.current) {
+        cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = null;
+      }
+
       if (marqueeBox) {
         const x1 = Math.min(marqueeBox.startX, marqueeBox.currentX);
         const x2 = Math.max(marqueeBox.startX, marqueeBox.currentX);
@@ -722,7 +727,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
         if (x2 - x1 > 6 || y2 - y1 > 6) {
           const matchedTransformers = displayData.transformers
-            .filter(t => t.x >= x1 - 18 && t.x <= x2 + 18 && t.y >= y1 - 18 && t.y <= y2 + 18)
+            .filter(t => isTransformerVisible(t) && t.x >= x1 - 18 && t.x <= x2 + 18 && t.y >= y1 - 18 && t.y <= y2 + 18)
             .map(t => t.id);
 
           const matchedSwitches = displayData.switches
@@ -766,10 +771,73 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         }
         setMarqueeBox(null);
       }
+
+      const activeMD = multiDraggingRef.current;
+      if (activeMD) {
+        const finalDx = Math.round(activeMD.dx || 0);
+        const finalDy = Math.round(activeMD.dy || 0);
+
+        if (Math.abs(finalDx) > 1 || Math.abs(finalDy) > 1) {
+          const tfUpdates = activeMD.items.transformers.map(t => {
+            const pt = toPortraitCoords(Math.round(t.initialX + finalDx), Math.round(t.initialY + finalDy));
+            return { id: t.id, x: pt.x, y: pt.y };
+          });
+
+          const swUpdates = activeMD.items.switches.map(s => {
+            const pt = toPortraitCoords(Math.round(s.initialX + finalDx), Math.round(s.initialY + finalDy));
+            return { id: s.id, x: pt.x, y: pt.y };
+          });
+
+          const annUpdates = activeMD.items.annotations.map(a => {
+            const pt = toPortraitCoords(Math.round(a.initialX + finalDx), Math.round(a.initialY + finalDy));
+            return { id: a.id, x: pt.x, y: pt.y };
+          });
+
+          const pathUpdates = activeMD.items.feederPaths.map(p => {
+            const original = feederPaths.find(orig => orig.id === p.id);
+            const newPoints = p.initialPoints.map(pt => toPortraitCoords(Math.round(pt.x + finalDx), Math.round(pt.y + finalDy)));
+            return { ...(original || { id: p.id, points: newPoints }), points: newPoints };
+          });
+
+          if (onBatchUpdatePositions) {
+            onBatchUpdatePositions({
+              transformers: tfUpdates,
+              switches: swUpdates,
+              annotations: annUpdates,
+              feederPaths: pathUpdates
+            });
+          } else {
+            tfUpdates.forEach(u => onUpdateTransformerPosition(u.id, u.x, u.y));
+            swUpdates.forEach(u => onUpdateSwitchPosition?.(u.id, u.x, u.y));
+            annUpdates.forEach(u => onUpdateAnnotationPosition?.(u.id, u.x, u.y));
+            pathUpdates.forEach(u => onUpdateFeederPath?.(u));
+          }
+        }
+        multiDraggingRef.current = null;
+        setMultiDragging(null);
+      }
+
+      const activeV = draggingVertexRef.current;
+      if (activeV && onUpdateFeederPath) {
+        const finalDx = Math.round(activeV.dx || 0);
+        const finalDy = Math.round(activeV.dy || 0);
+        if (Math.abs(finalDx) > 1 || Math.abs(finalDy) > 1) {
+          const newX = Math.round(activeV.initialX + finalDx);
+          const newY = Math.round(activeV.initialY + finalDy);
+          const targetPath = feederPaths.find(p => p.id === activeV.pathId);
+          if (targetPath) {
+            const pt = toPortraitCoords(newX, newY);
+            const newPoints = [...targetPath.points];
+            newPoints[activeV.pointIndex] = { x: pt.x, y: pt.y };
+            onUpdateFeederPath({ ...targetPath, points: newPoints });
+          }
+        }
+        draggingVertexRef.current = null;
+        setDraggingVertex(null);
+      }
+
       setIsPanning(false);
-      setMultiDragging(null);
       setDraggingItem(null);
-      setDraggingVertex(null);
     };
 
     window.addEventListener('mousemove', handleWindowMouseMove);
@@ -778,36 +846,39 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     return () => {
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
+      if (dragRafRef.current) {
+        cancelAnimationFrame(dragRafRef.current);
+      }
     };
   }, [
     isPanning,
-    multiDragging,
-    marqueeBox,
-    draggingItem,
-    draggingVertex,
+    !!multiDragging,
+    !!marqueeBox,
+    !!draggingVertex,
     startPan,
-    zoom,
-    feederPaths,
+    screenToCanvas,
     displayData,
+    isTransformerVisible,
     multiSelection,
     transformers,
+    feederPaths,
     switches,
     annotations,
+    onSelectTransformer,
+    onSelectPath,
+    onSelectSwitch,
+    onSelectAnnotation,
     toPortraitCoords,
-    screenToCanvas,
     onBatchUpdatePositions,
     onUpdateTransformerPosition,
     onUpdateSwitchPosition,
     onUpdateAnnotationPosition,
-    onUpdateFeederPath,
-    onSelectTransformer,
-    onSelectPath,
-    onSelectSwitch,
-    onSelectAnnotation
+    onUpdateFeederPath
   ]);
 
   // Zoom handlers (Centered on viewport)
   const handleZoomIn = () => {
+    hasUserPannedOrZoomedRef.current = true;
     if (!containerRef.current) {
       setZoom(z => Math.min(z * 1.2, 4.0));
       return;
@@ -828,6 +899,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   };
 
   const handleZoomOut = () => {
+    hasUserPannedOrZoomedRef.current = true;
     if (!containerRef.current) {
       setZoom(z => Math.max(z / 1.2, 0.15));
       return;
@@ -848,6 +920,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   };
 
   const handleResetZoom = () => {
+    hasUserPannedOrZoomedRef.current = false;
     handleFitToScreen();
   };
 
@@ -966,26 +1039,32 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     });
   }, [canvasBounds.width, canvasBounds.height]);
 
-  // ปรับมุมมองให้อัตโนมัติเมื่อเปิดหน้าเว็บ หรือเมื่อสลับแผ่นผัง หรือปรับขนาดหน้าต่าง
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      handleFitToScreen();
-    }, 100);
+  const handleFitToScreenRef = useRef(handleFitToScreen);
+  handleFitToScreenRef.current = handleFitToScreen;
 
-    // ใช้ ResizeObserver เพื่อปรับพอดีหน้าจอเมื่อกล่องแสดงผลเปลี่ยนขนาด
+  // ปรับมุมมองให้อัตโนมัติเมื่อเปิดหน้าเว็บ หรือเมื่อสลับแผ่นผัง
+  useEffect(() => {
+    hasUserPannedOrZoomedRef.current = false;
+    const timer = setTimeout(() => {
+      handleFitToScreenRef.current();
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [sheetId]);
+
+  // ใช้ ResizeObserver เพื่อปรับพอดีหน้าจอเมื่อกล่องแสดงผลเปลี่ยนขนาด (เฉพาะกรณีที่ผู้ใช้ยังไม่ได้เลื่อนหรือซูมเอง)
+  useEffect(() => {
     if (containerRef.current && typeof ResizeObserver !== 'undefined') {
       const resizeObserver = new ResizeObserver(() => {
-        handleFitToScreen();
+        if (!hasUserPannedOrZoomedRef.current) {
+          handleFitToScreenRef.current();
+        }
       });
       resizeObserver.observe(containerRef.current);
       return () => {
-        clearTimeout(timer);
         resizeObserver.disconnect();
       };
     }
-
-    return () => clearTimeout(timer);
-  }, [sheetId, transformers.length, canvasOrientation, handleFitToScreen]);
+  }, []);
 
   // ซูมผังวงจรโดยใช้ลูกกลิ้งเม้าส์ (Mouse Wheel Zoom) โดยใช้ตำแหน่งเคอร์เซอร์เป็นจุดศูนย์กลางการซูม
   useEffect(() => {
@@ -995,6 +1074,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     const onNativeWheel = (e: WheelEvent) => {
       // ป้องกันหน้าเว็บเลื่อนหรือดีด
       e.preventDefault();
+      hasUserPannedOrZoomedRef.current = true;
 
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
@@ -1176,28 +1256,6 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         pathIds: clickedType === 'path' ? [clickedId] : []
       };
       setMultiSelection(effectiveSel);
-
-      if (clickedType === 'transformer') {
-        onSelectTransformer(transformers.find(t => t.id === clickedId) || null);
-        onSelectPath?.(null);
-        onSelectSwitch?.(null);
-        onSelectAnnotation?.(null);
-      } else if (clickedType === 'switch') {
-        onSelectSwitch?.(switches.find(s => s.id === clickedId) || null);
-        onSelectTransformer(null);
-        onSelectPath?.(null);
-        onSelectAnnotation?.(null);
-      } else if (clickedType === 'annotation') {
-        onSelectAnnotation?.(annotations.find(a => a.id === clickedId) || null);
-        onSelectTransformer(null);
-        onSelectPath?.(null);
-        onSelectSwitch?.(null);
-      } else if (clickedType === 'path') {
-        onSelectPath?.(feederPaths.find(p => p.id === clickedId) || null);
-        onSelectTransformer(null);
-        onSelectSwitch?.(null);
-        onSelectAnnotation?.(null);
-      }
     }
 
     // เตรียมรายการพิกัดเริ่มต้นสำหรับลากเลื่อนพร้อมกัน
@@ -1217,16 +1275,20 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       .filter(p => effectiveSel.pathIds.includes(p.id))
       .map(p => ({ id: p.id, initialPoints: p.points.map(pt => ({ x: pt.x, y: pt.y })) }));
 
-    setMultiDragging({
+    const newMultiDragging = {
       startX: e.clientX,
       startY: e.clientY,
+      dx: 0,
+      dy: 0,
       items: {
         transformers: tItems,
         switches: sItems,
         annotations: aItems,
         feederPaths: pItems
       }
-    });
+    };
+    multiDraggingRef.current = newMultiDragging;
+    setMultiDragging(newMultiDragging);
   };
 
   // Backwards compatibility alias for single drag
@@ -1251,14 +1313,18 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     e.stopPropagation();
     if (isReadOnly) return;
     dragMovedRef.current = false;
-    setDraggingVertex({
+    const newVertex = {
       pathId,
       pointIndex,
       startX: e.clientX,
       startY: e.clientY,
       initialX,
-      initialY
-    });
+      initialY,
+      dx: 0,
+      dy: 0
+    };
+    draggingVertexRef.current = newVertex;
+    setDraggingVertex(newVertex);
   };
 
   // Add a new point between index and index + 1
@@ -1311,33 +1377,42 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     setCanvasClickMode('select');
   };
 
-  // Center on selected transformer if query searched
+  // Center on selected transformer or landmark ONLY when explicitly searching via the search bar
+  const lastCenteredSearchIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (selectedId) {
+    // Do not auto-pan if user is actively interacting (dragging, panning, or moving items)
+    if (isPanning || draggingItem || multiDragging || draggingVertex) return;
+
+    // Only auto-pan when a search query is actively entered
+    const trimmedQuery = searchQuery ? searchQuery.trim() : '';
+    if (!trimmedQuery) {
+      lastCenteredSearchIdRef.current = null;
+      return;
+    }
+
+    if (selectedId && lastCenteredSearchIdRef.current !== selectedId) {
       const selected = displayData.transformers.find(t => t.id === selectedId);
       if (selected && containerRef.current) {
         const { clientWidth, clientHeight } = containerRef.current;
         setPan({
-          x: clientWidth / 2 - selected.x * zoom,
-          y: clientHeight / 2 - selected.y * zoom
+          x: Math.round(clientWidth / 2 - selected.x * zoom),
+          y: Math.round(clientHeight / 2 - selected.y * zoom)
         });
+        lastCenteredSearchIdRef.current = selectedId;
       }
-    }
-  }, [selectedId, zoom, displayData.transformers]);
-
-  // Center on selected landmark/annotation if searched or selected
-  useEffect(() => {
-    if (selectedAnnotationId) {
+    } else if (selectedAnnotationId && lastCenteredSearchIdRef.current !== selectedAnnotationId) {
       const selected = displayData.annotations.find(a => a.id === selectedAnnotationId);
       if (selected && containerRef.current) {
         const { clientWidth, clientHeight } = containerRef.current;
         setPan({
-          x: clientWidth / 2 - selected.x * zoom,
-          y: clientHeight / 2 - selected.y * zoom
+          x: Math.round(clientWidth / 2 - selected.x * zoom),
+          y: Math.round(clientHeight / 2 - selected.y * zoom)
         });
+        lastCenteredSearchIdRef.current = selectedAnnotationId;
       }
     }
-  }, [selectedAnnotationId, zoom, displayData.annotations]);
+  }, [selectedId, selectedAnnotationId, searchQuery, zoom]);
 
   // Color theme definitions
   const themeStyles = {
@@ -2261,7 +2336,17 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             const isSelected = selectedPathId === path.id || isMultiSelected;
             const isHovered = hoveredPathId === path.id;
             const isLineEditing = !isReadOnly && (canvasClickMode === 'edit_line' || (isSelected && totalSelectedCount === 1));
-            const pointsStr = path.points.map(p => `${p.x},${p.y}`).join(' ');
+
+            const isPathBeingDragged = multiDragging?.items.feederPaths.some(x => x.id === path.id);
+            const pDx = isPathBeingDragged ? (multiDragging?.dx || 0) : 0;
+            const pDy = isPathBeingDragged ? (multiDragging?.dy || 0) : 0;
+
+            const pointsStr = path.points.map((p, pIdx) => {
+              const isVDrag = draggingVertex && draggingVertex.pathId === path.id && draggingVertex.pointIndex === pIdx;
+              const vDx = isVDrag ? (draggingVertex?.dx || 0) : 0;
+              const vDy = isVDrag ? (draggingVertex?.dy || 0) : 0;
+              return `${Math.round(p.x + pDx + vDx)},${Math.round(p.y + pDy + vDy)}`;
+            }).join(' ');
             const lineColor = path.color || themeStyles.wire;
 
             return (
@@ -2475,9 +2560,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             const isVertical = label.orientation === 'vertical';
             const isMultiSelected = multiSelection.annotationIds.includes(label.id);
             const isSelected = selectedAnnotationId === label.id || isMultiSelected;
-            const isBeingDragged = (draggingItem?.type === 'annotation' && draggingItem.id === label.id) || (multiDragging?.items.annotations.some(x => x.id === label.id));
-            const curX = isBeingDragged && draggingItem ? draggingItem.currentX : label.x;
-            const curY = isBeingDragged && draggingItem ? draggingItem.currentY : label.y;
+            const isBeingDragged = multiDragging?.items.annotations.some(x => x.id === label.id);
+            const curX = isBeingDragged ? Math.round(label.x + (multiDragging?.dx || 0)) : label.x;
+            const curY = isBeingDragged ? Math.round(label.y + (multiDragging?.dy || 0)) : label.y;
 
             const isLandmark = [
               'school', 'temple', 'hospital', 'government', 'makro', 'lotus', 'seven_eleven'
@@ -2622,36 +2707,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     strokeWidth="1.5"
                     strokeDasharray="4,3"
                     rx="6"
-                    className="animate-pulse"
                   />
-                )}
-
-                {/* Real-time Coordinate Floating Badge during Drag */}
-                {isBeingDragged && (
-                  <g transform={`translate(0, ${hitY - 14})`} className="pointer-events-none">
-                    <rect
-                      x="-44"
-                      y="-12"
-                      width="88"
-                      height="22"
-                      rx="6"
-                      fill="#2563eb"
-                      fillOpacity="0.95"
-                      stroke="#ffffff"
-                      strokeWidth="1.5"
-                    />
-                    <text
-                      x="0"
-                      y="3"
-                      fill="#ffffff"
-                      fontSize="10"
-                      fontWeight="bold"
-                      textAnchor="middle"
-                      fontFamily="monospace"
-                    >
-                      {curX}, {curY}
-                    </text>
-                  </g>
                 )}
 
                 {label.type === 'feeder_title' ? (
@@ -2923,15 +2979,16 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           {/* Switches and Cutouts Layer */}
           {displayData.switches.map(sw => {
             const isTag = sw.type === 'FEEDER_TAG';
-            const isMultiSelected = multiSelection.switchIds.includes(sw.id);
-            const isBeingDragged = (draggingItem?.type === 'switch' && draggingItem.id === sw.id) || (multiDragging?.items.switches.some(x => x.id === sw.id));
+            const isBeingDragged = multiDragging?.items.switches.some(x => x.id === sw.id);
             const isSelected = selectedSwitchId === sw.id || isMultiSelected;
             const isOpened = sw.status === 'opened';
+            const curRenderX = isBeingDragged ? Math.round(sw.x + (multiDragging?.dx || 0)) : sw.x;
+            const curRenderY = isBeingDragged ? Math.round(sw.y + (multiDragging?.dy || 0)) : sw.y;
 
             return (
               <g
                 key={sw.id}
-                transform={`translate(${sw.x}, ${sw.y}) rotate(${sw.rotation || 0}) scale(${symbolScale})`}
+                transform={`translate(${curRenderX}, ${curRenderY}) rotate(${sw.rotation || 0}) scale(${symbolScale})`}
                 className={`transition-opacity duration-200 ${
                   isDraggable ? (isBeingDragged ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'
                 }`}
@@ -2966,7 +3023,6 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     strokeWidth="2"
                     strokeDasharray="4,3"
                     rx="6"
-                    className="animate-pulse"
                   />
                 )}
 
@@ -3089,8 +3145,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
               t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
               String(t.kva).includes(searchQuery)
             );
-            const isFilteredOut = (filterKva && t.kva !== filterKva) ||
-              (filterType !== 'all' && t.type !== filterType);
+            if (!isTransformerVisible(t)) {
+              return null;
+            }
 
             const isPrivate = t.type === 'private';
             const triFill = isPrivate ? themeStyles.privateFill : themeStyles.publicFill;
@@ -3149,15 +3206,16 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             }
             const badgeY = -12;
 
-            const isBeingDragged = (draggingItem?.type === 'transformer' && draggingItem.id === t.id) || (multiDragging?.items.transformers.some(x => x.id === t.id));
+            const isBeingDragged = multiDragging?.items.transformers.some(x => x.id === t.id);
             const quickActionY = effectivePos === 'bottom' ? textY + 44 : (effStemDir === 'bottom' ? 42 : 36);
+            const curRenderX = isBeingDragged ? Math.round(t.x + (multiDragging?.dx || 0)) : t.x;
+            const curRenderY = isBeingDragged ? Math.round(t.y + (multiDragging?.dy || 0)) : t.y;
 
             return (
               <g
                 key={t.id}
                 id={`tr-node-${t.id}`}
-                transform={`translate(${t.x}, ${t.y}) scale(${symbolScale})`}
-                opacity={isFilteredOut ? 0.2 : 1}
+                transform={`translate(${curRenderX}, ${curRenderY}) scale(${symbolScale})`}
                 className={`transition-opacity duration-200 ${
                   isDraggable ? (isBeingDragged ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'
                 }`}
@@ -3187,44 +3245,17 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 onMouseLeave={() => setHoveredTransformer(null)}
                 onMouseDown={(e) => startDragMulti('transformer', t.id, e)}
               >
-                {/* Real-time Coordinate Floating Badge during Drag */}
-                {isBeingDragged && (
-                  <g transform="translate(0, -38)" className="pointer-events-none">
-                    <rect
-                      x="-44"
-                      y="-12"
-                      width="88"
-                      height="22"
-                      rx="6"
-                      fill="#2563eb"
-                      fillOpacity="0.95"
-                      stroke="#ffffff"
-                      strokeWidth="1.5"
-                    />
-                    <text
-                      x="0"
-                      y="3"
-                      fill="#ffffff"
-                      fontSize="10"
-                      fontWeight="bold"
-                      textAnchor="middle"
-                      fontFamily="monospace"
-                    >
-                      X:{t.x} Y:{t.y}
-                    </text>
-                  </g>
-                )}
-                {/* Search match pulsating indicator */}
+                {/* Search match highlight indicator */}
                 {isMatchSearch && (
                   <circle
                     cx="0"
                     cy="0"
-                    r="32"
-                    fill="none"
+                    r="30"
+                    fill="#eab308"
+                    fillOpacity="0.12"
                     stroke="#eab308"
-                    strokeWidth="3"
-                    className="animate-ping"
-                    opacity="0.75"
+                    strokeWidth="2.5"
+                    strokeDasharray="4,3"
                   />
                 )}
 
