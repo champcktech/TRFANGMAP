@@ -67,6 +67,48 @@ service cloud.firestore {
       data.updatedAt is timestamp;
     }
 
+    function isValidDraft(data) {
+      return data.keys().hasAll([
+        'sheetId',
+        'actionType',
+        'transformerData',
+        'requesterName',
+        'status',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'sheetId',
+        'actionType',
+        'targetTransformerId',
+        'transformerData',
+        'originalData',
+        'requesterName',
+        'requesterContact',
+        'requestNotes',
+        'status',
+        'reviewedBy',
+        'reviewedAt',
+        'reviewNote',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      isValidId(data.sheetId) &&
+      (data.actionType == 'create' || data.actionType == 'update') &&
+      data.transformerData is map &&
+      data.requesterName is string && data.requesterName.size() >= 1 && data.requesterName.size() <= 120 &&
+      (!('requesterContact' in data) || (data.requesterContact is string && data.requesterContact.size() <= 120)) &&
+      (!('requestNotes' in data) || (data.requestNotes is string && data.requestNotes.size() <= 500)) &&
+      (!('targetTransformerId' in data) || (data.targetTransformerId is string && data.targetTransformerId.size() <= 128)) &&
+      (!('originalData' in data) || (data.originalData is map)) &&
+      (!('reviewedBy' in data) || (data.reviewedBy is string && data.reviewedBy.size() <= 120)) &&
+      (!('reviewedAt' in data) || (data.reviewedAt is timestamp)) &&
+      (!('reviewNote' in data) || (data.reviewNote is string && data.reviewNote.size() <= 500)) &&
+      (data.status == 'pending' || data.status == 'approved' || data.status == 'rejected') &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
     match /sheets/{sheetId} {
       allow get: if isValidId(sheetId) && (resource == null || isSharedWorkspace(existing().workspaceId));
       allow list: if existing().workspaceId == 'pea-fang-shared';
@@ -100,6 +142,34 @@ service cloud.firestore {
       allow delete: if request.auth != null &&
         isValidId(sheetId) &&
         isSharedWorkspace(existing().workspaceId);
+    }
+
+    match /transformer_drafts/{draftId} {
+      allow get, list: if isValidId(draftId);
+
+      // Unauthenticated guests and logged-in users can both submit a pending draft
+      allow create: if isValidId(draftId) &&
+        isValidDraft(incoming()) &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      // Only authenticated admin users can approve or reject drafts
+      allow update: if request.auth != null &&
+        isValidId(draftId) &&
+        isValidDraft(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'status',
+          'reviewedBy',
+          'reviewedAt',
+          'reviewNote',
+          'updatedAt'
+        ]);
+
+      // Only authenticated admin users can delete drafts
+      allow delete: if request.auth != null && isValidId(draftId);
     }
   }
 }

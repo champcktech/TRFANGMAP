@@ -83,6 +83,92 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "TransformerDraft": {
+      "title": "TransformerDraft",
+      "description": "Represents a proposed draft to add or edit a transformer by unauthenticated guests or operators, pending admin approval.",
+      "type": "object",
+      "properties": {
+        "sheetId": {
+          "type": "string",
+          "description": "Target diagram sheet ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "actionType": {
+          "type": "string",
+          "description": "Action type: create (add new) or update (edit existing)",
+          "enum": ["create", "update"]
+        },
+        "targetTransformerId": {
+          "type": "string",
+          "description": "ID of the transformer to edit, if actionType is update",
+          "maxLength": 128
+        },
+        "transformerData": {
+          "type": "object",
+          "description": "Proposed transformer properties (peaNo, name, kva, phase, type, poleNo, x, y, etc.)"
+        },
+        "originalData": {
+          "type": "object",
+          "description": "Snapshot of previous transformer data before editing, for diffing"
+        },
+        "requesterName": {
+          "type": "string",
+          "description": "Name of the person proposing the draft",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "requesterContact": {
+          "type": "string",
+          "description": "Phone number, department, or contact info of the requester",
+          "maxLength": 120
+        },
+        "requestNotes": {
+          "type": "string",
+          "description": "Reason or notes describing the proposed addition or modification",
+          "maxLength": 500
+        },
+        "status": {
+          "type": "string",
+          "description": "Approval status of the draft",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "reviewedBy": {
+          "type": "string",
+          "description": "Email or identifier of the admin who reviewed the draft",
+          "maxLength": 120
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the draft was approved or rejected"
+        },
+        "reviewNote": {
+          "type": "string",
+          "description": "Feedback or explanation from the admin",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the draft was submitted"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the draft was last updated"
+        }
+      },
+      "required": [
+        "sheetId",
+        "actionType",
+        "transformerData",
+        "requesterName",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -91,6 +177,12 @@
         "$ref": "#/entities/DiagramSheet"
       },
       "description": "Stores shared diagram sheets for all users under workspaceId pea-fang-shared."
+    },
+    "/transformer_drafts/{draftId}": {
+      "schema": {
+        "$ref": "#/entities/TransformerDraft"
+      },
+      "description": "Stores proposed transformer additions and edits submitted by guests or operators awaiting admin confirmation."
     }
   }
 }

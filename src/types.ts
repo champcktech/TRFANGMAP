@@ -112,3 +112,25 @@ export interface DiagramData {
   feederPaths: FeederPath[];
   annotations: AnnotationLabel[];
 }
+
+export type DraftActionType = 'create' | 'update';
+export type DraftStatus = 'pending' | 'approved' | 'rejected';
+
+export interface TransformerDraft {
+  id: string;
+  sheetId: string;
+  actionType: DraftActionType;
+  targetTransformerId?: string; // ID หม้อแปลงเดิมถ้าเป็นการแก้ไข
+  transformerData: Partial<Transformer>; // ข้อมูลหม้อแปลงที่เสนอ
+  originalData?: Partial<Transformer>; // ข้อมูลเดิมสำหรับเปรียบเทียบ
+  requesterName: string; // ชื่อผู้ส่งแบบร่าง
+  requesterContact?: string; // เบอร์โทร/แผนก/สังกัด
+  requestNotes?: string; // หมายเหตุหรือเหตุผล
+  status: DraftStatus; // pending, approved, rejected
+  reviewedBy?: string; // แอดมินผู้พิจารณา
+  reviewedAt?: string;
+  reviewNote?: string; // หมายเหตุผลการพิจารณา
+  createdAt: string;
+  updatedAt: string;
+}
+

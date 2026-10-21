@@ -22,7 +22,8 @@ import {
   ExternalLink,
   Copy,
   Check,
-  Compass
+  Compass,
+  FileText
 } from 'lucide-react';
 import { 
   getGoogleMapsNavUrl, 
@@ -38,6 +39,7 @@ interface TransformerDetailDrawerProps {
   onEdit: (t: Transformer) => void;
   onDelete: (id: string) => void;
   onUpdatePosition?: (id: string, x: number, y: number) => void;
+  onProposeDraftEdit?: (t: Transformer) => void;
 }
 
 export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = ({
@@ -46,7 +48,8 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
   onClose,
   onEdit,
   onDelete,
-  onUpdatePosition
+  onUpdatePosition,
+  onProposeDraftEdit
 }) => {
   const [copied, setCopied] = React.useState(false);
   const [copiedGps, setCopiedGps] = React.useState(false);
@@ -344,28 +347,40 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+      <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
         {isReadOnly ? (
           <>
-            <button
-              type="button"
-              onClick={handleCopyInfo}
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm ${
-                copied
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
-            >
-              {copied ? <CheckCircle className="w-3.5 h-3.5" /> : <Tag className="w-3.5 h-3.5" />}
-              <span>{copied ? 'คัดลอกข้อมูลแล้ว' : 'คัดลอกข้อมูล PEA'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition-colors"
-            >
-              ปิด
-            </button>
+            {onProposeDraftEdit && (
+              <button
+                type="button"
+                onClick={() => onProposeDraftEdit(transformer)}
+                className="w-full py-2 px-3 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>เสนอแก้ไขข้อมูล (แบบร่าง)</span>
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopyInfo}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer ${
+                  copied
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200'
+                }`}
+              >
+                {copied ? <CheckCircle className="w-3.5 h-3.5" /> : <Tag className="w-3.5 h-3.5" />}
+                <span>{copied ? 'คัดลอกข้อมูลแล้ว' : 'คัดลอกข้อมูล PEA'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                ปิด
+              </button>
+            </div>
           </>
         ) : (
           <>

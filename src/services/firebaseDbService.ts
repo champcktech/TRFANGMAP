@@ -22,7 +22,7 @@ import {
   sendPasswordResetEmail
 } from 'firebase/auth';
 import { db, auth, googleProvider, handleFirestoreError, OperationType } from '../firebase';
-import { DiagramSheet, Transformer, SwitchNode, FeederPath, AnnotationLabel } from '../types';
+import { DiagramSheet, Transformer, SwitchNode, FeederPath, AnnotationLabel, TransformerDraft } from '../types';
 
 export const SHARED_WORKSPACE_ID = 'pea-fang-shared';
 
@@ -255,3 +255,192 @@ export async function deleteSheetFromCloudFirestore(sheetId: string): Promise<vo
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
+
+/**
+ * Submits a new transformer draft (can be called by unauthenticated guests or operators)
+ */
+export async function submitTransformerDraft(params: {
+  sheetId: string;
+  actionType: 'create' | 'update';
+  targetTransformerId?: string;
+  transformerData: Partial<Transformer>;
+  originalData?: Partial<Transformer>;
+  requesterName: string;
+  requesterContact?: string;
+  requestNotes?: string;
+}): Promise<string> {
+  const rand = Math.random().toString(36).substring(2, 9);
+  const draftId = `draft-${Date.now()}-${rand}`.replace(/[^a-zA-Z0-9_\-]/g, '-').slice(0, 128);
+  const path = `transformer_drafts/${draftId}`;
+
+  const payload: Record<string, any> = {
+    sheetId: String(params.sheetId || 'sheet-1').slice(0, 128),
+    actionType: params.actionType,
+    transformerData: stripUndefined(params.transformerData || {}),
+    requesterName: String(params.requesterName || 'ผู้ใช้งานทั่วไป').trim().slice(0, 120) || 'ผู้ใช้งานทั่วไป',
+    status: 'pending',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+
+  if (params.targetTransformerId) {
+    payload.targetTransformerId = String(params.targetTransformerId).slice(0, 128);
+  }
+  if (params.originalData) {
+    payload.originalData = stripUndefined(params.originalData);
+  }
+  if (params.requesterContact?.trim()) {
+    payload.requesterContact = String(params.requesterContact).trim().slice(0, 120);
+  }
+  if (params.requestNotes?.trim()) {
+    payload.requestNotes = String(params.requestNotes).trim().slice(0, 500);
+  }
+
+  try {
+    await setDoc(doc(db, 'transformer_drafts', draftId), payload);
+    return draftId;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
+/**
+ * Fetches all transformer drafts
+ */
+export async function fetchTransformerDrafts(): Promise<TransformerDraft[]> {
+  const path = 'transformer_drafts';
+  try {
+    const snapshot = await getDocs(collection(db, 'transformer_drafts'));
+    if (snapshot.empty) return [];
+
+    const drafts: TransformerDraft[] = snapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        sheetId: data.sheetId || '',
+        actionType: data.actionType || 'create',
+        targetTransformerId: data.targetTransformerId,
+        transformerData: (data.transformerData || {}) as Partial<Transformer>,
+        originalData: data.originalData as Partial<Transformer> | undefined,
+        requesterName: data.requesterName || '',
+        requesterContact: data.requesterContact,
+        requestNotes: data.requestNotes,
+        status: data.status || 'pending',
+        reviewedBy: data.reviewedBy,
+        reviewedAt: data.reviewedAt?.toDate ? data.reviewedAt.toDate().toISOString() : undefined,
+        reviewNote: data.reviewNote,
+        createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : new Date().toISOString()
+      };
+    });
+
+    return drafts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+/**
+ * Subscribes to real-time updates for transformer drafts
+ */
+export function subscribeToTransformerDrafts(
+  onUpdate: (drafts: TransformerDraft[]) => void
+): Unsubscribe {
+  const path = 'transformer_drafts';
+  return onSnapshot(
+    collection(db, 'transformer_drafts'),
+    (snapshot) => {
+      const drafts: TransformerDraft[] = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          sheetId: data.sheetId || '',
+          actionType: data.actionType || 'create',
+          targetTransformerId: data.targetTransformerId,
+          transformerData: (data.transformerData || {}) as Partial<Transformer>,
+          originalData: data.originalData as Partial<Transformer> | undefined,
+          requesterName: data.requesterName || '',
+          requesterContact: data.requesterContact,
+          requestNotes: data.requestNotes,
+          status: data.status || 'pending',
+          reviewedBy: data.reviewedBy,
+          reviewedAt: data.reviewedAt?.toDate ? data.reviewedAt.toDate().toISOString() : undefined,
+          reviewNote: data.reviewNote,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : new Date().toISOString()
+        };
+      });
+
+      drafts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      onUpdate(drafts);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    }
+  );
+}
+
+/**
+ * Approves a transformer draft (Admins only)
+ */
+export async function approveTransformerDraft(
+  draftId: string, 
+  adminEmail: string,
+  reviewNote?: string
+): Promise<void> {
+  const path = `transformer_drafts/${draftId}`;
+  const updatePayload: Record<string, any> = {
+    status: 'approved',
+    reviewedBy: String(adminEmail || 'admin').slice(0, 120),
+    reviewedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  if (reviewNote?.trim()) {
+    updatePayload.reviewNote = String(reviewNote).trim().slice(0, 500);
+  }
+
+  try {
+    await updateDoc(doc(db, 'transformer_drafts', draftId), updatePayload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+/**
+ * Rejects a transformer draft (Admins only)
+ */
+export async function rejectTransformerDraft(
+  draftId: string,
+  adminEmail: string,
+  reviewNote?: string
+): Promise<void> {
+  const path = `transformer_drafts/${draftId}`;
+  const updatePayload: Record<string, any> = {
+    status: 'rejected',
+    reviewedBy: String(adminEmail || 'admin').slice(0, 120),
+    reviewedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  if (reviewNote?.trim()) {
+    updatePayload.reviewNote = String(reviewNote).trim().slice(0, 500);
+  }
+
+  try {
+    await updateDoc(doc(db, 'transformer_drafts', draftId), updatePayload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+/**
+ * Deletes a transformer draft (Admins only)
+ */
+export async function deleteTransformerDraft(draftId: string): Promise<void> {
+  const path = `transformer_drafts/${draftId}`;
+  try {
+    await deleteDoc(doc(db, 'transformer_drafts', draftId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
