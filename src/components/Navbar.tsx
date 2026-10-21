@@ -137,6 +137,18 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Active sheet object and transformer count by type
+  const activeSheetObj = useMemo(() => {
+    return sheets.find(s => s.id === activeSheetId) || sheets[0];
+  }, [sheets, activeSheetId]);
+
+  const { publicCount, privateCount } = useMemo(() => {
+    const list = activeSheetObj?.transformers || [];
+    const pub = list.filter(t => t.type === 'public').length;
+    const priv = list.filter(t => t.type === 'private').length;
+    return { publicCount: pub, privateCount: priv };
+  }, [activeSheetObj]);
+
   // Filter transformers and landmarks across active sheet and other sheets
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -152,7 +164,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     }[] = [];
 
     // 1. Search transformers in active sheet first
-    const currentSheetObj = sheets.find(s => s.id === activeSheetId);
+    const currentSheetObj = activeSheetObj;
     if (currentSheetObj && currentSheetObj.transformers) {
       currentSheetObj.transformers.forEach(t => {
         const match = 
@@ -225,6 +237,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     isCurrentSheet: boolean;
   }) => {
     if (item.type === 'transformer' && item.transformer) {
+      if (filterType !== 'all') {
+        onFilterTypeChange?.('all');
+      }
       if (onSelectTransformer) {
         onSelectTransformer(item.transformer, item.sheetId);
       } else if (!item.isCurrentSheet && onSelectSheet) {
@@ -522,8 +537,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="flex items-center gap-2">
                     <span className="text-xs">🔘</span>
                     <div>
-                      <div>แสดงทั้งหมด (All)</div>
-                      <div className="text-[10px] text-slate-400 font-normal">ทั้ง กฟภ. และ ผู้ใช้ไฟ</div>
+                      <div>แสดงทั้งหมด ({publicCount + privateCount} เครื่อง)</div>
+                      <div className="text-[10px] text-slate-400 font-normal">ทั้ง กฟภ. ({publicCount}) และ ผู้ใช้ไฟ ({privateCount})</div>
                     </div>
                   </div>
                   {(filterType === 'all' || !filterType) && <Check className="w-3.5 h-3.5 text-blue-600" />}
@@ -542,7 +557,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-purple-600 shrink-0"></span>
                     <div>
-                      <div className="text-purple-700 dark:text-purple-300 font-semibold">กฟภ. อย่างเดียว</div>
+                      <div className="text-purple-700 dark:text-purple-300 font-semibold">กฟภ. อย่างเดียว ({publicCount} เครื่อง)</div>
                       <div className="text-[10px] text-slate-400 font-normal">จำหน่ายทั่วไป</div>
                     </div>
                   </div>
@@ -562,7 +577,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0"></span>
                     <div>
-                      <div className="text-blue-700 dark:text-blue-300 font-semibold">ผู้ใช้ไฟ อย่างเดียว</div>
+                      <div className="text-blue-700 dark:text-blue-300 font-semibold">ผู้ใช้ไฟ อย่างเดียว ({privateCount} เครื่อง)</div>
                       <div className="text-[10px] text-slate-400 font-normal">เฉพาะราย</div>
                     </div>
                   </div>

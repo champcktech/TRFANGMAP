@@ -35,9 +35,14 @@ import {
   Power,
   Type,
   GripVertical,
+  GripHorizontal,
   Landmark,
   BoxSelect,
-  Copy
+  Copy,
+  Columns,
+  Rows,
+  PanelLeft,
+  PanelRight
 } from 'lucide-react';
 
 export interface MultiSelection {
@@ -249,9 +254,46 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     return true; // ค่าเริ่มต้นเป็นพื้นโปร่งใสตามความต้องการของผู้ใช้
   });
 
-  // Draggable floating toolbar state
+  // Draggable floating toolbar state (รองรับการสลับรูปแบบแนวนอน / แนวตั้ง)
   const canvasRootRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarLayout, setToolbarLayout] = useState<'horizontal' | 'vertical'>(() => {
+    try {
+      const saved = localStorage.getItem('canvas_toolbar_layout');
+      if (saved === 'vertical' || saved === 'horizontal') return saved;
+    } catch {}
+    return 'horizontal';
+  });
+
+  const toggleToolbarLayout = useCallback(() => {
+    setToolbarLayout(prev => {
+      const next = prev === 'horizontal' ? 'vertical' : 'horizontal';
+      try {
+        localStorage.setItem('canvas_toolbar_layout', next);
+      } catch {}
+
+      // Auto-adjust position if switching layout to prevent toolbar being clipped off-screen
+      setTimeout(() => {
+        if (canvasRootRef.current && toolbarRef.current) {
+          const rootRect = canvasRootRef.current.getBoundingClientRect();
+          const tbRect = toolbarRef.current.getBoundingClientRect();
+          const maxX = Math.max(8, rootRect.width - tbRect.width - 8);
+          const maxY = Math.max(8, rootRect.height - tbRect.height - 8);
+          setToolbarPos(current => {
+            const nextX = Math.max(8, Math.min(current.x, maxX));
+            const nextY = Math.max(8, Math.min(current.y, maxY));
+            try {
+              localStorage.setItem('canvas_floating_toolbar_pos', JSON.stringify({ x: nextX, y: nextY }));
+            } catch {}
+            return { x: nextX, y: nextY };
+          });
+        }
+      }, 50);
+
+      return next;
+    });
+  }, []);
+
   const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number }>(() => {
     try {
       const saved = localStorage.getItem('canvas_floating_toolbar_pos');
@@ -328,7 +370,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     window.addEventListener('pointercancel', onPointerUp);
   }, [toolbarPos]);
 
-  // Adjust toolbar position if window resized beyond bounds
+  // Adjust toolbar position if window resized beyond bounds or layout changed
   useEffect(() => {
     const handleResize = () => {
       if (canvasRootRef.current && toolbarRef.current) {
@@ -346,9 +388,10 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         });
       }
     };
+    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [toolbarLayout]);
 
   // ข้อมูลที่แสดงผลบน Canvas ตามมุมมอง (แนวตั้งตาม PDF หรือ แนวนอน)
   const displayData = useMemo(() => {
@@ -548,6 +591,13 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       if (isReadOnly) return;
       const activeTag = document.activeElement?.tagName?.toLowerCase();
       if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
+
+      // Toggle Floating Toolbar Orientation (Alt+T)
+      if (e.altKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        toggleToolbarLayout();
+        return;
+      }
 
       // Select All (Ctrl+A / Cmd+A)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
@@ -1196,6 +1246,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     e: React.MouseEvent
   ) => {
     e.stopPropagation();
+    e.preventDefault();
     if (isReadOnly || !isDraggable) return;
 
     dragMovedRef.current = false;
@@ -1311,6 +1362,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     e: React.MouseEvent
   ) => {
     e.stopPropagation();
+    e.preventDefault();
     if (isReadOnly) return;
     dragMovedRef.current = false;
     const newVertex = {
@@ -1469,387 +1521,817 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     }
   }[theme];
 
+  // Helper render items inside Add Symbol dropdown menu
+  const renderAddMenuItems = () => (
+    <>
+      <button
+        onClick={() => {
+          setCanvasClickMode('add');
+          setIsAddMenuOpen(false);
+        }}
+        className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium cursor-pointer"
+      >
+        <Zap className="w-4 h-4 text-amber-500" />
+        <span>⚡ เพิ่มหม้อแปลง (Transformer)</span>
+      </button>
+      <button
+        onClick={() => {
+          setCanvasClickMode('add_switch');
+          setIsAddMenuOpen(false);
+        }}
+        className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium cursor-pointer"
+      >
+        <Power className="w-4 h-4 text-emerald-600" />
+        <span>🔲 เพิ่มสวิตช์ / ABS / Fuse / Recloser</span>
+      </button>
+      <button
+        onClick={() => {
+          setCanvasClickMode('add_annotation');
+          setIsAddMenuOpen(false);
+        }}
+        className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium cursor-pointer"
+      >
+        <Type className="w-4 h-4 text-blue-600" />
+        <span>🔤 เพิ่มข้อความ / ชื่อถนน / สายป้อน</span>
+      </button>
+      <button
+        onClick={() => {
+          setDrawingPoints([]);
+          setCanvasClickMode('draw_line');
+          setIsAddMenuOpen(false);
+        }}
+        className="w-full px-3 py-2 text-left hover:bg-purple-50 dark:hover:bg-purple-950/40 flex items-center gap-2 text-purple-700 dark:text-purple-300 font-medium cursor-pointer"
+      >
+        <PenTool className="w-4 h-4 text-purple-600" />
+        <span>🖊️ วาดเส้นวงจรใหม่ (Pen Tool)</span>
+      </button>
+
+      {/* Landmarks Category */}
+      <div className="border-t border-slate-100 dark:border-slate-700 my-1 pt-1">
+        <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+          <Landmark className="w-3 h-3 text-blue-500" />
+          <span>สัญลักษณ์สถานที่สำคัญ (Landmarks)</span>
+        </div>
+        <button
+          onClick={() => {
+            setPendingLandmarkType('school');
+            setCanvasClickMode('add_landmark');
+            setIsAddMenuOpen(false);
+          }}
+          className="w-full px-3 py-1.5 text-left hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
+        >
+          <span className="text-sm">🏫</span>
+          <span className="font-medium">โรงเรียน (School)</span>
+        </button>
+        <button
+          onClick={() => {
+            setPendingLandmarkType('temple');
+            setCanvasClickMode('add_landmark');
+            setIsAddMenuOpen(false);
+          }}
+          className="w-full px-3 py-1.5 text-left hover:bg-amber-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
+        >
+          <span className="text-sm">🛕</span>
+          <span className="font-medium">วัด (Wat / Temple)</span>
+        </button>
+        <button
+          onClick={() => {
+            setPendingLandmarkType('hospital');
+            setCanvasClickMode('add_landmark');
+            setIsAddMenuOpen(false);
+          }}
+          className="w-full px-3 py-1.5 text-left hover:bg-red-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
+        >
+          <span className="text-sm">🏥</span>
+          <span className="font-medium">โรงพยาบาล (Hospital)</span>
+        </button>
+        <button
+          onClick={() => {
+            setPendingLandmarkType('government');
+            setCanvasClickMode('add_landmark');
+            setIsAddMenuOpen(false);
+          }}
+          className="w-full px-3 py-1.5 text-left hover:bg-sky-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
+        >
+          <span className="text-sm">🏛️</span>
+          <span className="font-medium">สถานที่ราชการ (Govt Office)</span>
+        </button>
+        <button
+          onClick={() => {
+            setPendingLandmarkType('makro');
+            setCanvasClickMode('add_landmark');
+            setIsAddMenuOpen(false);
+          }}
+          className="w-full px-3 py-1.5 text-left hover:bg-rose-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
+        >
+          <span className="text-sm">🔴</span>
+          <span className="font-medium">แมคโคร (Makro)</span>
+        </button>
+        <button
+          onClick={() => {
+            setPendingLandmarkType('lotus');
+            setCanvasClickMode('add_landmark');
+            setIsAddMenuOpen(false);
+          }}
+          className="w-full px-3 py-1.5 text-left hover:bg-emerald-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
+        >
+          <span className="text-sm">🟢</span>
+          <span className="font-medium">โลตัส (Lotus's)</span>
+        </button>
+        <button
+          onClick={() => {
+            setPendingLandmarkType('seven_eleven');
+            setCanvasClickMode('add_landmark');
+            setIsAddMenuOpen(false);
+          }}
+          className="w-full px-3 py-1.5 text-left hover:bg-orange-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
+        >
+          <span className="text-sm">🏪</span>
+          <span className="font-medium">เซเว่น (7-Eleven)</span>
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div ref={canvasRootRef} className="relative w-full h-full flex flex-col select-none overflow-hidden bg-slate-100 dark:bg-slate-900">
-      {/* Floating Canvas Toolbar (Draggable) */}
+      {/* Floating Canvas Toolbar (Draggable - Supports Horizontal & Vertical) */}
       <div 
         ref={toolbarRef}
         style={{ left: `${toolbarPos.x}px`, top: `${toolbarPos.y}px` }}
         onPointerDown={handleToolbarPointerDown}
-        className={`absolute z-30 flex flex-wrap items-center gap-1.5 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-1.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 select-none transition-shadow ${
+        className={`absolute z-30 ${
+          toolbarLayout === 'vertical'
+            ? 'flex flex-col items-stretch gap-1.5 w-56 max-h-[calc(100%-16px)] overflow-y-auto custom-scrollbar bg-white/95 dark:bg-slate-800/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl'
+            : 'flex flex-wrap items-center gap-1.5 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-1.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-md hover:shadow-lg'
+        } select-none transition-shadow ${
           isDraggingToolbar 
             ? 'shadow-2xl ring-2 ring-blue-500/50 cursor-grabbing' 
-            : 'shadow-md hover:shadow-lg'
+            : ''
         }`}
       >
-        {/* Drag Handle Indicator */}
-        <div
-          className="flex items-center justify-center p-1 rounded cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors"
-          title="คลิกลากเพื่อย้ายตำแหน่งแท็บเครื่องมือ (ดับเบิ้ลคลิกเพื่อรีเซ็ตกลับมุมซ้ายบน)"
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            setToolbarPos({ x: 8, y: 8 });
-            try {
-              localStorage.setItem('canvas_floating_toolbar_pos', JSON.stringify({ x: 8, y: 8 }));
-            } catch {}
-          }}
-        >
-          <GripVertical className="w-3.5 h-3.5" />
-        </div>
-
-        <div className="flex items-center gap-0.5 border-r border-slate-200 dark:border-slate-700 pr-1.5">
-          <button
-            id="btn-zoom-in"
-            onClick={handleZoomIn}
-            title="ซูมเข้า (Zoom In) - หมุนลูกกลิ้งเม้าส์ขึ้น"
-            className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-          >
-            <ZoomIn className="w-3.5 h-3.5" />
-          </button>
-          <span className="text-[11px] font-mono font-medium px-1 text-slate-600 dark:text-slate-300 min-w-[2.75rem] text-center">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button
-            id="btn-zoom-out"
-            onClick={handleZoomOut}
-            title="ซูมออก (Zoom Out) - หมุนลูกกลิ้งเม้าส์ลง"
-            className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-          >
-            <ZoomOut className="w-3.5 h-3.5" />
-          </button>
-          <button
-            id="btn-fit-screen"
-            onClick={handleFitToScreen}
-            title="ปรับพอดีหน้าจอ (Fit Screen) - เห็นผังครบทั้งแผ่น"
-            className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-          >
-            <Maximize2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            id="btn-reset-zoom"
-            onClick={handleResetZoom}
-            title="รีเซ็ตมุมมอง (Reset View)"
-            className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Quick Mode & Actions */}
-        <div className="flex items-center gap-1">
-
-          {/* Drag & Move Toggle Button (Editor only) */}
-          {!isReadOnly && onToggleDraggable && (
-            <button
-              id="btn-canvas-toggle-drag"
-              onClick={onToggleDraggable}
-              title={isDraggable ? 'กำลังเปิดโหมดลากย้ายตำแหน่ง (คลิกเพื่อล็อค)' : 'ตำแหน่งถูกล็อคอยู่ (คลิกเพื่อปลดล็อคให้ลากย้าย)'}
-              className={`px-2 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-all ${
-                isDraggable
-                  ? 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-            >
-              {isDraggable ? <Unlock className="w-3 h-3 text-amber-600" /> : <Lock className="w-3 h-3" />}
-              <span>{isDraggable ? 'ลากได้' : 'ล็อค'}</span>
-            </button>
-          )}
-
-          <button
-            id="btn-toggle-grid"
-            onClick={() => setShowGrid(!showGrid)}
-            title="เปิด/ปิด เส้นตาราง (Toggle Grid)"
-            className={`p-1 rounded-md transition-colors text-xs flex items-center gap-1 font-medium ${
-              showGrid 
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' 
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-            }`}
-          >
-            <Layers className="w-3 h-3" />
-            <span className="hidden sm:inline text-[11px]">ตาราง</span>
-          </button>
-
-          {/* Toggle Text Background (Transparent vs Boxed) */}
-          <button
-            id="btn-toggle-text-bg"
-            onClick={() => {
-              const next = !isTextBgTransparent;
-              setIsTextBgTransparent(next);
-              localStorage.setItem('canvas_text_bg_transparent', String(next));
-            }}
-            title={
-              isTextBgTransparent
-                ? 'พื้นหลังข้อความ: โปร่งใส (คลิกเพื่อเปลี่ยนเป็นมีกรอบการ์ดทึบ)'
-                : 'พื้นหลังข้อความ: มีกรอบการ์ดทึบ (คลิกเพื่อเปลี่ยนเป็นพื้นโปร่งใส)'
-            }
-            className={`p-1 rounded-md transition-colors text-xs flex items-center gap-1 font-medium ${
-              isTextBgTransparent
-                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-            }`}
-          >
-            <Type className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-            <span className="hidden sm:inline text-[11px]">
-              {isTextBgTransparent ? 'พื้นโปร่งใส' : 'พื้นมีกรอบ'}
-            </span>
-          </button>
-
-          {/* Symbol Size Scaling Button */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-md p-0.5 border border-slate-200 dark:border-slate-700 text-xs">
-            <button
-              onClick={() => setSymbolScale(prev => Math.max(0.6, Number((prev - 0.1).toFixed(2))))}
-              title="ลดขนาดสัญลักษณ์ (Smaller Symbols)"
-              className="px-1 py-0.5 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded text-[11px] font-bold"
-            >
-              A-
-            </button>
-            <span className="px-1 font-mono text-[10px] text-slate-700 dark:text-slate-300 font-semibold select-none">
-              {Math.round(symbolScale * 100)}%
-            </span>
-            <button
-              onClick={() => setSymbolScale(prev => Math.min(1.4, Number((prev + 0.1).toFixed(2))))}
-              title="เพิ่มขนาดสัญลักษณ์ (Larger Symbols)"
-              className="px-1 py-0.5 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded text-[11px] font-bold"
-            >
-              A+
-            </button>
-          </div>
-
-          {/* Editor-only tools */}
-          {!isReadOnly && (
-            <>
-              {/* Marquee Multi-Select Toggle Button */}
-              <button
-                id="btn-toggle-marquee"
-                onClick={() => {
-                  setCanvasClickMode(curr => curr === 'marquee' ? 'select' : 'marquee');
+        {toolbarLayout === 'vertical' ? (
+          /* ================= VERTICAL TOOLBAR LAYOUT ================= */
+          <>
+            {/* Header / Drag Handle & Orientation Toggle */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700 cursor-grab active:cursor-grabbing">
+              <div 
+                className="flex items-center gap-1.5 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors select-none"
+                title="คลิกลากเพื่อย้ายตำแหน่งแท็บเครื่องมือ (ดับเบิ้ลคลิกเพื่อรีเซ็ตกลับมุมซ้ายบน)"
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setToolbarPos({ x: 8, y: 8 });
+                  try {
+                    localStorage.setItem('canvas_floating_toolbar_pos', JSON.stringify({ x: 8, y: 8 }));
+                  } catch {}
                 }}
-                title="โหมดคลุมเลือกหลายสัญลักษณ์ (Marquee Box) หรือกด Shift + ลากเมาส์บนผัง"
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  canvasClickMode === 'marquee'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800'
-                }`}
               >
-                <BoxSelect className="w-3.5 h-3.5" />
-                <span>{canvasClickMode === 'marquee' ? 'กำลังคลุมเลือก' : 'เลือกกลุ่ม'}</span>
-              </button>
-              {/* Line Edit Mode Toggle Button */}
-              <button
-                id="btn-toggle-line-edit"
-                onClick={() => {
-                  if (canvasClickMode === 'edit_line' || canvasClickMode === 'draw_line') {
-                    setCanvasClickMode('select');
-                    onSelectPath?.(null);
-                  } else {
-                    setCanvasClickMode('edit_line');
-                  }
-                }}
-                title="โหมดแก้ไขและดัดเส้นวงจร (Feeder Line Editor)"
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  canvasClickMode === 'edit_line' || canvasClickMode === 'draw_line'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200 dark:border-indigo-800'
-                }`}
-              >
-                <GitCommit className="w-3.5 h-3.5" />
-                <span>{canvasClickMode === 'edit_line' || canvasClickMode === 'draw_line' ? 'กำลังแก้ไขเส้น' : 'แก้ไขเส้นวงจร'}</span>
-              </button>
-
-              {/* Pen / Draw Line Button */}
-              <button
-                id="btn-draw-line"
-                onClick={() => {
-                  if (canvasClickMode === 'draw_line') {
-                    handleCancelDrawing();
-                  } else {
-                    setDrawingPoints([]);
-                    setCanvasClickMode('draw_line');
-                  }
-                }}
-                title="วาดเส้นสายป้อนใหม่ (Pen Tool)"
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  canvasClickMode === 'draw_line'
-                    ? 'bg-purple-600 text-white shadow-md animate-pulse'
-                    : 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/80 border border-purple-200 dark:border-purple-800'
-                }`}
-              >
-                <PenTool className="w-3.5 h-3.5" />
-                <span>{canvasClickMode === 'draw_line' ? 'กำลังวาดเส้น...' : 'วาดเส้นใหม่'}</span>
-              </button>
-
-              {/* Add Elements Dropdown / Mode Selector */}
-              <div className="relative">
+                <GripHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-[12px] font-bold tracking-tight">แท็บเครื่องมือ</span>
+                <span className="px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-[9px] font-semibold">
+                  แนวตั้ง
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
                 <button
-                  id="btn-mode-add-menu"
-                  onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                    canvasClickMode !== 'select' && canvasClickMode !== 'edit_line' && canvasClickMode !== 'draw_line'
-                      ? 'bg-amber-500 text-white shadow-md animate-pulse'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setToolbarPos({ x: 8, y: 8 });
+                    try {
+                      localStorage.setItem('canvas_floating_toolbar_pos', JSON.stringify({ x: 8, y: 8 }));
+                    } catch {}
+                  }}
+                  title="จัดชิดขอบซ้าย (Dock Left)"
+                  className="px-1.5 py-0.5 rounded text-[10px] text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  ชิดซ้าย
+                </button>
+                <button
+                  type="button"
+                  id="btn-switch-to-horizontal-toolbar"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleToolbarLayout();
+                  }}
+                  title="สลับแท็บเครื่องมือกลับเป็นแบบแนวนอน (กด Alt+T)"
+                  className="px-2 py-0.5 rounded text-[10px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900 border border-blue-200 dark:border-blue-800 flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                >
+                  <Rows className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                  <span>แนวนอน</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Zoom Controls */}
+            <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-900/60 p-1 rounded-lg border border-slate-200/80 dark:border-slate-700/80">
+              <button
+                id="btn-zoom-out-v"
+                onClick={handleZoomOut}
+                title="ซูมออก (Zoom Out)"
+                className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[11px] font-mono font-bold text-slate-700 dark:text-slate-200 min-w-[2.5rem] text-center">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                id="btn-zoom-in-v"
+                onClick={handleZoomIn}
+                title="ซูมเข้า (Zoom In)"
+                className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+              <div className="h-3.5 w-px bg-slate-300 dark:bg-slate-700 mx-0.5" />
+              <button
+                id="btn-fit-screen-v"
+                onClick={handleFitToScreen}
+                title="ปรับพอดีหน้าจอ (Fit Screen)"
+                className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                id="btn-reset-zoom-v"
+                onClick={handleResetZoom}
+                title="รีเซ็ตมุมมอง 100%"
+                className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Transformer Type Filter Buttons */}
+            <div className="flex flex-col gap-1 bg-slate-100 dark:bg-slate-900/60 p-1 rounded-lg border border-slate-200/80 dark:border-slate-700/80 text-xs">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 flex items-center justify-between">
+                <span>ตัวกรองหม้อแปลง</span>
+                <span className="text-[9px] font-normal">{publicCount + privateCount} รวม</span>
+              </div>
+              <button
+                onClick={() => onFilterTypeChange?.('all')}
+                title="แสดงหม้อแปลงทั้งหมด (ทั้ง กฟภ. และ ผู้ใช้ไฟ)"
+                className={`w-full px-2 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer flex items-center justify-between ${
+                  filterType === 'all' || !filterType
+                    ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <span>ทั้งหมด</span>
+                <span className="text-[10px] opacity-75 font-mono">({publicCount + privateCount})</span>
+              </button>
+              <button
+                onClick={() => onFilterTypeChange?.(filterType === 'public' ? 'all' : 'public')}
+                title="แสดงเฉพาะหม้อแปลง กฟภ."
+                className={`w-full px-2 py-1 rounded text-[11px] font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                  filterType === 'public'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/50'
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                  <span>กฟภ.</span>
+                </div>
+                <span className="text-[10px] opacity-80 font-mono">({publicCount})</span>
+              </button>
+              <button
+                onClick={() => onFilterTypeChange?.(filterType === 'private' ? 'all' : 'private')}
+                title="แสดงเฉพาะหม้อแปลงของผู้ใช้ไฟ"
+                className={`w-full px-2 py-1 rounded text-[11px] font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                  filterType === 'private'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/50'
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                  <span>ผู้ใช้ไฟ</span>
+                </div>
+                <span className="text-[10px] opacity-80 font-mono">({privateCount})</span>
+              </button>
+              {filterType === 'none' && (
+                <button
+                  onClick={() => onFilterTypeChange?.('all')}
+                  title="หม้อแปลงถูกซ่อนอยู่ คลิกเพื่อแสดงทั้งหมด"
+                  className="w-full px-2 py-1 rounded text-[11px] font-semibold bg-rose-600 text-white shadow-xs flex items-center justify-center gap-1 cursor-pointer animate-pulse"
+                >
+                  <EyeOff className="w-3 h-3" />
+                  <span>ซ่อนอยู่ (คลิกแสดง)</span>
+                </button>
+              )}
+            </div>
+
+            {/* Quick Settings: Lock, Grid, Text Bg, Symbol Size */}
+            <div className="flex flex-col gap-1 border-t border-slate-200 dark:border-slate-700 pt-1.5">
+              <div className="grid grid-cols-2 gap-1">
+                {/* Drag lock */}
+                {!isReadOnly && onToggleDraggable && (
+                  <button
+                    id="btn-canvas-toggle-drag-v"
+                    onClick={onToggleDraggable}
+                    title={isDraggable ? 'กำลังเปิดโหมดลากย้าย (คลิกเพื่อล็อค)' : 'ตำแหน่งล็อคอยู่ (คลิกเพื่อปลดล็อค)'}
+                    className={`px-1.5 py-1 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                      isDraggable
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700 shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    {isDraggable ? <Unlock className="w-3 h-3 text-amber-600" /> : <Lock className="w-3 h-3" />}
+                    <span>{isDraggable ? 'ลากได้' : 'ล็อค'}</span>
+                  </button>
+                )}
+
+                {/* Grid */}
+                <button
+                  id="btn-toggle-grid-v"
+                  onClick={() => setShowGrid(!showGrid)}
+                  title="เปิด/ปิด เส้นตาราง (Toggle Grid)"
+                  className={`px-1.5 py-1 rounded-md text-[11px] flex items-center justify-center gap-1 font-medium transition-colors border cursor-pointer ${
+                    showGrid 
+                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-800' 
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
                   }`}
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>
-                    {canvasClickMode === 'add' ? 'วางหม้อแปลง' :
-                     canvasClickMode === 'add_switch' ? 'วางสวิตช์' :
-                     canvasClickMode === 'add_annotation' ? 'วางข้อความ' :
-                     canvasClickMode === 'add_landmark' ? 'วางสัญลักษณ์สถานที่' : 'เพิ่มสัญลักษณ์'}
-                  </span>
-                  <ChevronDown className="w-3.5 h-3.5 ml-0.5 opacity-80" />
+                  <Layers className="w-3 h-3" />
+                  <span>ตาราง</span>
+                </button>
+              </div>
+
+              {/* Text Background & Symbol Scale */}
+              <div className="grid grid-cols-2 gap-1">
+                <button
+                  id="btn-toggle-text-bg-v"
+                  onClick={() => {
+                    const next = !isTextBgTransparent;
+                    setIsTextBgTransparent(next);
+                    localStorage.setItem('canvas_text_bg_transparent', String(next));
+                  }}
+                  title={isTextBgTransparent ? 'พื้นโปร่งใส (คลิกเปลี่ยนเป็นมีกรอบ)' : 'พื้นมีกรอบ (คลิกเปลี่ยนเป็นโปร่งใส)'}
+                  className={`px-1 py-1 rounded-md text-[10px] flex items-center justify-center gap-1 font-medium transition-colors border cursor-pointer ${
+                    isTextBgTransparent
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  <Type className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="truncate">{isTextBgTransparent ? 'โปร่งใส' : 'มีกรอบ'}</span>
                 </button>
 
-                {isAddMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs max-h-96 overflow-y-auto">
-                    <button
-                      onClick={() => {
-                        setCanvasClickMode('add');
-                        setIsAddMenuOpen(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium"
-                    >
-                      <Zap className="w-4 h-4 text-amber-500" />
-                      <span>⚡ เพิ่มหม้อแปลง (Transformer)</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setCanvasClickMode('add_switch');
-                        setIsAddMenuOpen(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium"
-                    >
-                      <Power className="w-4 h-4 text-emerald-600" />
-                      <span>🔲 เพิ่มสวิตช์ / ABS / Fuse / Recloser</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setCanvasClickMode('add_annotation');
-                        setIsAddMenuOpen(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium"
-                    >
-                      <Type className="w-4 h-4 text-blue-600" />
-                      <span>🔤 เพิ่มข้อความ / ชื่อถนน / สายป้อน</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setDrawingPoints([]);
-                        setCanvasClickMode('draw_line');
-                        setIsAddMenuOpen(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-purple-50 dark:hover:bg-purple-950/40 flex items-center gap-2 text-purple-700 dark:text-purple-300 font-medium"
-                    >
-                      <PenTool className="w-4 h-4 text-purple-600" />
-                      <span>🖊️ วาดเส้นวงจรใหม่ (Pen Tool)</span>
-                    </button>
+                <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 rounded-md p-0.5 border border-slate-200 dark:border-slate-700 text-xs">
+                  <button
+                    onClick={() => setSymbolScale(prev => Math.max(0.6, Number((prev - 0.1).toFixed(2))))}
+                    title="ลดขนาดสัญลักษณ์"
+                    className="px-1 py-0.5 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded text-[10px] font-bold cursor-pointer"
+                  >
+                    A-
+                  </button>
+                  <span className="font-mono text-[9px] text-slate-700 dark:text-slate-300 font-semibold select-none">
+                    {Math.round(symbolScale * 100)}%
+                  </span>
+                  <button
+                    onClick={() => setSymbolScale(prev => Math.min(1.4, Number((prev + 0.1).toFixed(2))))}
+                    title="เพิ่มขนาดสัญลักษณ์"
+                    className="px-1 py-0.5 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded text-[10px] font-bold cursor-pointer"
+                  >
+                    A+
+                  </button>
+                </div>
+              </div>
+            </div>
 
-                    {/* Landmarks Category */}
-                    <div className="border-t border-slate-100 dark:border-slate-700 my-1 pt-1">
-                      <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                        <Landmark className="w-3 h-3 text-blue-500" />
-                        <span>สัญลักษณ์สถานที่สำคัญ (Landmarks)</span>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setPendingLandmarkType('school');
-                          setCanvasClickMode('add_landmark');
-                          setIsAddMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
-                      >
-                        <span className="text-sm">🏫</span>
-                        <span className="font-medium">โรงเรียน (School)</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPendingLandmarkType('temple');
-                          setCanvasClickMode('add_landmark');
-                          setIsAddMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-amber-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
-                      >
-                        <span className="text-sm">🛕</span>
-                        <span className="font-medium">วัด (Wat / Temple)</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPendingLandmarkType('hospital');
-                          setCanvasClickMode('add_landmark');
-                          setIsAddMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-red-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
-                      >
-                        <span className="text-sm">🏥</span>
-                        <span className="font-medium">โรงพยาบาล (Hospital)</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPendingLandmarkType('government');
-                          setCanvasClickMode('add_landmark');
-                          setIsAddMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-sky-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
-                      >
-                        <span className="text-sm">🏛️</span>
-                        <span className="font-medium">สถานที่ราชการ (Govt Office)</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPendingLandmarkType('makro');
-                          setCanvasClickMode('add_landmark');
-                          setIsAddMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-rose-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
-                      >
-                        <span className="text-sm">🔴</span>
-                        <span className="font-medium">แมคโคร (Makro)</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPendingLandmarkType('lotus');
-                          setCanvasClickMode('add_landmark');
-                          setIsAddMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-emerald-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
-                      >
-                        <span className="text-sm">🟢</span>
-                        <span className="font-medium">โลตัส (Lotus's)</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPendingLandmarkType('seven_eleven');
-                          setCanvasClickMode('add_landmark');
-                          setIsAddMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-orange-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
-                      >
-                        <span className="text-sm">🏪</span>
-                        <span className="font-medium">เซเว่น (7-Eleven)</span>
-                      </button>
+            {/* Editor-only tools (Vertical stacked buttons) */}
+            {!isReadOnly && (
+              <div className="flex flex-col gap-1 border-t border-slate-200 dark:border-slate-700 pt-1.5">
+                {/* Marquee Multi-Select */}
+                <button
+                  id="btn-toggle-marquee-v"
+                  onClick={() => setCanvasClickMode(curr => curr === 'marquee' ? 'select' : 'marquee')}
+                  title="โหมดคลุมเลือกหลายสัญลักษณ์ (Marquee Box)"
+                  className={`w-full px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                    canvasClickMode === 'marquee'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800'
+                  }`}
+                >
+                  <BoxSelect className="w-3.5 h-3.5 shrink-0" />
+                  <span>{canvasClickMode === 'marquee' ? 'กำลังคลุมเลือก' : 'เลือกกลุ่ม (Marquee)'}</span>
+                </button>
+
+                {/* Line Edit Mode */}
+                <button
+                  id="btn-toggle-line-edit-v"
+                  onClick={() => {
+                    if (canvasClickMode === 'edit_line' || canvasClickMode === 'draw_line') {
+                      setCanvasClickMode('select');
+                      onSelectPath?.(null);
+                    } else {
+                      setCanvasClickMode('edit_line');
+                    }
+                  }}
+                  title="โหมดแก้ไขและดัดเส้นวงจร"
+                  className={`w-full px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                    canvasClickMode === 'edit_line' || canvasClickMode === 'draw_line'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200 dark:border-indigo-800'
+                  }`}
+                >
+                  <GitCommit className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{canvasClickMode === 'edit_line' || canvasClickMode === 'draw_line' ? 'กำลังแก้ไขเส้น' : 'แก้ไขเส้นวงจร'}</span>
+                </button>
+
+                {/* Draw line */}
+                <button
+                  id="btn-draw-line-v"
+                  onClick={() => {
+                    if (canvasClickMode === 'draw_line') {
+                      handleCancelDrawing();
+                    } else {
+                      setDrawingPoints([]);
+                      setCanvasClickMode('draw_line');
+                    }
+                  }}
+                  title="วาดเส้นสายป้อนใหม่ (Pen Tool)"
+                  className={`w-full px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                    canvasClickMode === 'draw_line'
+                      ? 'bg-purple-600 text-white shadow-md animate-pulse'
+                      : 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/80 border border-purple-200 dark:border-purple-800'
+                  }`}
+                >
+                  <PenTool className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{canvasClickMode === 'draw_line' ? 'กำลังวาดเส้น...' : 'วาดเส้นใหม่'}</span>
+                </button>
+
+                {/* Add element dropdown button */}
+                <div className="relative">
+                  <button
+                    id="btn-mode-add-menu-v"
+                    onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
+                    className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                      canvasClickMode !== 'select' && canvasClickMode !== 'edit_line' && canvasClickMode !== 'draw_line'
+                        ? 'bg-amber-500 text-white shadow-md animate-pulse'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Plus className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">
+                        {canvasClickMode === 'add' ? 'วางหม้อแปลง' :
+                         canvasClickMode === 'add_switch' ? 'วางสวิตช์' :
+                         canvasClickMode === 'add_annotation' ? 'วางข้อความ' :
+                         canvasClickMode === 'add_landmark' ? 'วางสถานที่' : 'เพิ่มสัญลักษณ์'}
+                      </span>
                     </div>
-                  </div>
+                    <ChevronDown className="w-3.5 h-3.5 opacity-80 shrink-0" />
+                  </button>
+
+                  {/* Add Elements Dropdown Menu */}
+                  {isAddMenuOpen && (
+                    <div className={`absolute ${
+                      toolbarPos.x > 500 ? 'right-full top-0 mr-2' : 'left-full top-0 ml-2'
+                    } w-60 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs max-h-96 overflow-y-auto`}>
+                      {renderAddMenuItems()}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Read-Only Status Indicator */}
+            {isReadOnly && (
+              <div className="px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px] font-semibold flex items-center justify-center gap-1.5 border border-blue-200 dark:border-blue-800 mt-1">
+                <Eye className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                <span>แสดงอย่างเดียว</span>
+              </div>
+            )}
+          </>
+        ) : (
+          /* ================= HORIZONTAL TOOLBAR LAYOUT ================= */
+          <>
+            {/* Drag Handle with Tool Label */}
+            <div
+              className="flex items-center gap-1.5 px-1.5 py-1 rounded cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors select-none"
+              title="คลิกลากเพื่อย้ายตำแหน่งแท็บเครื่องมือ (ดับเบิ้ลคลิกเพื่อรีเซ็ตกลับมุมซ้ายบน)"
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setToolbarPos({ x: 8, y: 8 });
+                try {
+                  localStorage.setItem('canvas_floating_toolbar_pos', JSON.stringify({ x: 8, y: 8 }));
+                } catch {}
+              }}
+            >
+              <GripVertical className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-[11px] font-bold tracking-tight text-slate-700 dark:text-slate-300">เครื่องมือ</span>
+            </div>
+
+            {/* Segmented Layout Selector: แนวนอน / แนวตั้ง */}
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs mr-0.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (toolbarLayout !== 'horizontal') toggleToolbarLayout();
+                }}
+                title="แท็บเครื่องมือแบบแนวนอน (กำลังใช้งาน)"
+                className="px-2 py-0.5 rounded text-[11px] font-semibold bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-2xs flex items-center gap-1 cursor-pointer transition-all"
+              >
+                <Rows className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                <span className="hidden sm:inline">แนวนอน</span>
+              </button>
+              <button
+                type="button"
+                id="btn-switch-to-vertical-toolbar"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleToolbarLayout();
+                }}
+                title="สลับแท็บเครื่องมือเป็นแบบแนวตั้ง (Switch to Vertical Toolbar, กด Alt+T)"
+                className="px-2 py-0.5 rounded text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-white/60 dark:hover:bg-slate-700/60 flex items-center gap-1 cursor-pointer transition-all"
+              >
+                <Columns className="w-3 h-3 text-slate-500 hover:text-blue-600" />
+                <span>แนวตั้ง</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-0.5 border-r border-slate-200 dark:border-slate-700 pr-1.5">
+              <button
+                id="btn-zoom-in"
+                onClick={handleZoomIn}
+                title="ซูมเข้า (Zoom In) - หมุนลูกกลิ้งเม้าส์ขึ้น"
+                className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[11px] font-mono font-medium px-1 text-slate-600 dark:text-slate-300 min-w-[2.75rem] text-center">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                id="btn-zoom-out"
+                onClick={handleZoomOut}
+                title="ซูมออก (Zoom Out) - หมุนลูกกลิ้งเม้าส์ลง"
+                className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <button
+                id="btn-fit-screen"
+                onClick={handleFitToScreen}
+                title="ปรับพอดีหน้าจอ (Fit Screen) - เห็นผังครบทั้งแผ่น"
+                className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                id="btn-reset-zoom"
+                onClick={handleResetZoom}
+                title="รีเซ็ตมุมมอง (Reset View)"
+                className="p-1 rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Quick Mode & Actions */}
+            <div className="flex items-center gap-1">
+              {/* Drag & Move Toggle Button (Editor only) */}
+              {!isReadOnly && onToggleDraggable && (
+                <button
+                  id="btn-canvas-toggle-drag"
+                  onClick={onToggleDraggable}
+                  title={isDraggable ? 'กำลังเปิดโหมดลากย้ายตำแหน่ง (คลิกเพื่อล็อค)' : 'ตำแหน่งถูกล็อคอยู่ (คลิกเพื่อปลดล็อคให้ลากย้าย)'}
+                  className={`px-2 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                    isDraggable
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {isDraggable ? <Unlock className="w-3 h-3 text-amber-600" /> : <Lock className="w-3 h-3" />}
+                  <span>{isDraggable ? 'ลากได้' : 'ล็อค'}</span>
+                </button>
+              )}
+
+              {/* Transformer Type Filter Quick Buttons */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-md p-0.5 border border-slate-200 dark:border-slate-700 text-xs">
+                <button
+                  onClick={() => onFilterTypeChange?.('all')}
+                  title="แสดงหม้อแปลงทั้งหมด (ทั้ง กฟภ. และ ผู้ใช้ไฟ)"
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer ${
+                    filterType === 'all' || !filterType
+                      ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  ทั้งหมด
+                </button>
+                <button
+                  onClick={() => onFilterTypeChange?.(filterType === 'public' ? 'all' : 'public')}
+                  title="แสดงเฉพาะหม้อแปลง กฟภ. (จำหน่ายทั่วไป) หรือคลิกซ้ำเพื่อแสดงทั้งหมด"
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                    filterType === 'public'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/50'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                  <span>กฟภ. ({publicCount})</span>
+                </button>
+                <button
+                  onClick={() => onFilterTypeChange?.(filterType === 'private' ? 'all' : 'private')}
+                  title="แสดงเฉพาะหม้อแปลงของผู้ใช้ไฟ (เฉพาะราย) หรือคลิกซ้ำเพื่อแสดงทั้งหมด"
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                    filterType === 'private'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/50'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                  <span>ผู้ใช้ไฟ ({privateCount})</span>
+                </button>
+                {filterType === 'none' && (
+                  <button
+                    onClick={() => onFilterTypeChange?.('all')}
+                    title="หม้อแปลงถูกซ่อนอยู่ คลิกเพื่อแสดงทั้งหมด"
+                    className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-600 text-white shadow-xs flex items-center gap-1 cursor-pointer animate-pulse"
+                  >
+                    <EyeOff className="w-3 h-3" />
+                    <span>ซ่อนอยู่</span>
+                  </button>
                 )}
               </div>
-            </>
-          )}
 
-          {/* Read-Only Status Indicator */}
-          {isReadOnly && (
-            <div className="px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[11px] font-semibold flex items-center gap-1.5 border border-blue-200 dark:border-blue-800">
-              <Eye className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>โหมดแสดงอย่างเดียว (View Only)</span>
+              <button
+                id="btn-toggle-grid"
+                onClick={() => setShowGrid(!showGrid)}
+                title="เปิด/ปิด เส้นตาราง (Toggle Grid)"
+                className={`p-1 rounded-md transition-colors text-xs flex items-center gap-1 font-medium cursor-pointer ${
+                  showGrid 
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' 
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <Layers className="w-3 h-3" />
+                <span className="hidden sm:inline text-[11px]">ตาราง</span>
+              </button>
+
+              {/* Toggle Text Background (Transparent vs Boxed) */}
+              <button
+                id="btn-toggle-text-bg"
+                onClick={() => {
+                  const next = !isTextBgTransparent;
+                  setIsTextBgTransparent(next);
+                  localStorage.setItem('canvas_text_bg_transparent', String(next));
+                }}
+                title={
+                  isTextBgTransparent
+                    ? 'พื้นหลังข้อความ: โปร่งใส (คลิกเพื่อเปลี่ยนเป็นมีกรอบการ์ดทึบ)'
+                    : 'พื้นหลังข้อความ: มีกรอบการ์ดทึบ (คลิกเพื่อเปลี่ยนเป็นพื้นโปร่งใส)'
+                }
+                className={`p-1 rounded-md transition-colors text-xs flex items-center gap-1 font-medium cursor-pointer ${
+                  isTextBgTransparent
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <Type className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline text-[11px]">
+                  {isTextBgTransparent ? 'พื้นโปร่งใส' : 'พื้นมีกรอบ'}
+                </span>
+              </button>
+
+              {/* Symbol Size Scaling Button */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-md p-0.5 border border-slate-200 dark:border-slate-700 text-xs">
+                <button
+                  onClick={() => setSymbolScale(prev => Math.max(0.6, Number((prev - 0.1).toFixed(2))))}
+                  title="ลดขนาดสัญลักษณ์ (Smaller Symbols)"
+                  className="px-1 py-0.5 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded text-[11px] font-bold cursor-pointer"
+                >
+                  A-
+                </button>
+                <span className="px-1 font-mono text-[10px] text-slate-700 dark:text-slate-300 font-semibold select-none">
+                  {Math.round(symbolScale * 100)}%
+                </span>
+                <button
+                  onClick={() => setSymbolScale(prev => Math.min(1.4, Number((prev + 0.1).toFixed(2))))}
+                  title="เพิ่มขนาดสัญลักษณ์ (Larger Symbols)"
+                  className="px-1 py-0.5 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded text-[11px] font-bold cursor-pointer"
+                >
+                  A+
+                </button>
+              </div>
+
+              {/* Editor-only tools */}
+              {!isReadOnly && (
+                <>
+                  {/* Marquee Multi-Select Toggle Button */}
+                  <button
+                    id="btn-toggle-marquee"
+                    onClick={() => {
+                      setCanvasClickMode(curr => curr === 'marquee' ? 'select' : 'marquee');
+                    }}
+                    title="โหมดคลุมเลือกหลายสัญลักษณ์ (Marquee Box) หรือกด Shift + ลากเมาส์บนผัง"
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      canvasClickMode === 'marquee'
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800'
+                    }`}
+                  >
+                    <BoxSelect className="w-3.5 h-3.5" />
+                    <span>{canvasClickMode === 'marquee' ? 'กำลังคลุมเลือก' : 'เลือกกลุ่ม'}</span>
+                  </button>
+                  {/* Line Edit Mode Toggle Button */}
+                  <button
+                    id="btn-toggle-line-edit"
+                    onClick={() => {
+                      if (canvasClickMode === 'edit_line' || canvasClickMode === 'draw_line') {
+                        setCanvasClickMode('select');
+                        onSelectPath?.(null);
+                      } else {
+                        setCanvasClickMode('edit_line');
+                      }
+                    }}
+                    title="โหมดแก้ไขและดัดเส้นวงจร (Feeder Line Editor)"
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      canvasClickMode === 'edit_line' || canvasClickMode === 'draw_line'
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200 dark:border-indigo-800'
+                    }`}
+                  >
+                    <GitCommit className="w-3.5 h-3.5" />
+                    <span>{canvasClickMode === 'edit_line' || canvasClickMode === 'draw_line' ? 'กำลังแก้ไขเส้น' : 'แก้ไขเส้นวงจร'}</span>
+                  </button>
+
+                  {/* Pen / Draw Line Button */}
+                  <button
+                    id="btn-draw-line"
+                    onClick={() => {
+                      if (canvasClickMode === 'draw_line') {
+                        handleCancelDrawing();
+                      } else {
+                        setDrawingPoints([]);
+                        setCanvasClickMode('draw_line');
+                      }
+                    }}
+                    title="วาดเส้นสายป้อนใหม่ (Pen Tool)"
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      canvasClickMode === 'draw_line'
+                        ? 'bg-purple-600 text-white shadow-md animate-pulse'
+                        : 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/80 border border-purple-200 dark:border-purple-800'
+                    }`}
+                  >
+                    <PenTool className="w-3.5 h-3.5" />
+                    <span>{canvasClickMode === 'draw_line' ? 'กำลังวาดเส้น...' : 'วาดเส้นใหม่'}</span>
+                  </button>
+
+                  {/* Add Elements Dropdown / Mode Selector */}
+                  <div className="relative">
+                    <button
+                      id="btn-mode-add-menu"
+                      onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        canvasClickMode !== 'select' && canvasClickMode !== 'edit_line' && canvasClickMode !== 'draw_line'
+                          ? 'bg-amber-500 text-white shadow-md animate-pulse'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                      }`}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>
+                        {canvasClickMode === 'add' ? 'วางหม้อแปลง' :
+                         canvasClickMode === 'add_switch' ? 'วางสวิตช์' :
+                         canvasClickMode === 'add_annotation' ? 'วางข้อความ' :
+                         canvasClickMode === 'add_landmark' ? 'วางสัญลักษณ์สถานที่' : 'เพิ่มสัญลักษณ์'}
+                      </span>
+                      <ChevronDown className="w-3.5 h-3.5 ml-0.5 opacity-80" />
+                    </button>
+
+                    {isAddMenuOpen && (
+                      <div className="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs max-h-96 overflow-y-auto">
+                        {renderAddMenuItems()}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Read-Only Status Indicator */}
+              {isReadOnly && (
+                <div className="px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[11px] font-semibold flex items-center gap-1.5 border border-blue-200 dark:border-blue-800">
+                  <Eye className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>โหมดแสดงอย่างเดียว (View Only)</span>
+                </div>
+              )}
+
+              {/* Canvas Sheet Dimensions Indicator */}
+              <div 
+                title={`ขนาดแผ่นผังเขียนแบบ: ${canvasBounds.width} × ${canvasBounds.height} พิกเซล (มาตราส่วน A4 แนวนอน 297 × 210 มม. เป๊ะ)`}
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 text-[11px] font-mono border border-slate-200 dark:border-slate-600"
+              >
+                <span className="text-slate-400 font-sans">ขนาดกระดาษ:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100">A4 แนวนอน ({canvasBounds.width} × {canvasBounds.height} px)</span>
+              </div>
             </div>
-          )}
-
-          {/* Canvas Sheet Dimensions Indicator */}
-          <div 
-            title={`ขนาดแผ่นผังเขียนแบบ: ${canvasBounds.width} × ${canvasBounds.height} พิกเซล (มาตราส่วน A4 แนวนอน 297 × 210 มม. เป๊ะ)`}
-            className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 text-[11px] font-mono border border-slate-200 dark:border-slate-600"
-          >
-            <span className="text-slate-400 font-sans">ขนาดกระดาษ:</span>
-            <span className="font-semibold text-slate-800 dark:text-slate-100">A4 แนวนอน ({canvasBounds.width} × {canvasBounds.height} px)</span>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       {/* Adding Transformer Banner */}
@@ -2181,40 +2663,122 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         </div>
       )}
 
-      {/* Legend & Guide Pill (Bottom Left) */}
-      <div className="absolute bottom-4 left-4 z-20 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-xs flex flex-wrap items-center gap-3.5 text-slate-700 dark:text-slate-300">
-        <div className="flex items-center gap-1.5">
-          <svg width="18" height="16" viewBox="0 0 18 16" className="inline-block">
-            <polygon points="9,2 16,14 2,14" fill="#ffffff" stroke="#9333ea" strokeWidth="2" />
-          </svg>
-          <span className="text-purple-700 dark:text-purple-300 font-semibold">กฟภ. (จำหน่ายทั่วไป)</span>
+      {/* Floating Active Filter Notification Banner */}
+      {filterType && filterType !== 'all' && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-slate-900/90 text-white px-3.5 py-1.5 rounded-full text-xs shadow-lg flex items-center gap-2 backdrop-blur-md border border-slate-700 animate-in fade-in slide-in-from-top-2 duration-200">
+          <Eye className="w-3.5 h-3.5 text-amber-400" />
+          <span>
+            {filterType === 'public' && `กำลังแสดงเฉพาะหม้อแปลง กฟภ. (${publicCount} เครื่อง)`}
+            {filterType === 'private' && `กำลังแสดงเฉพาะหม้อแปลงของผู้ใช้ไฟ (${privateCount} เครื่อง)`}
+            {filterType === 'none' && 'กำลังซ่อนสัญลักษณ์หม้อแปลงทั้งหมด'}
+          </span>
+          <button
+            onClick={() => onFilterTypeChange?.('all')}
+            className="ml-1 text-[11px] underline text-blue-300 hover:text-blue-200 font-bold cursor-pointer"
+          >
+            แสดงทั้งหมด
+          </button>
         </div>
-        <div className="flex items-center gap-1.5">
-          <svg width="18" height="16" viewBox="0 0 18 16" className="inline-block">
-            <polygon points="9,2 16,14 2,14" fill="#2563eb" stroke="#2563eb" strokeWidth="2" />
-          </svg>
-          <span className="text-blue-700 dark:text-blue-300 font-semibold">ผู้ใช้ไฟ (เฉพาะราย)</span>
+      )}
+
+      {/* Legend & Filter Controls (Bottom Left) */}
+      <div className="absolute bottom-4 left-4 z-20 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-3 py-2 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-xs flex flex-wrap items-center gap-2 text-slate-700 dark:text-slate-300">
+        <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-1 mr-0.5">
+          <Eye className="w-3.5 h-3.5 text-blue-500" />
+          <span>หม้อแปลง:</span>
         </div>
-        <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
-          <svg width="28" height="16" viewBox="0 0 28 16" className="inline-block">
-            <polygon points="8,2 14,14 2,14" fill="#ffffff" stroke="#9333ea" strokeWidth="2" />
-            <rect x="16" y="2" width="12" height="12" rx="2" fill="#9333ea" />
-            <text x="22" y="11" fontSize="8" fontWeight="bold" fill="#ffffff" textAnchor="middle">1Ø</text>
+
+        {/* Filter All */}
+        <button
+          onClick={() => onFilterTypeChange?.('all')}
+          title="แสดงหม้อแปลงทั้งหมดทั้ง กฟภ. และ ผู้ใช้ไฟ"
+          className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
+            filterType === 'all' || !filterType
+              ? 'bg-blue-600 text-white shadow-xs font-bold'
+              : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
+          }`}
+        >
+          <span>ทั้งหมด</span>
+          <span className="text-[10px] opacity-80">({publicCount + privateCount})</span>
+        </button>
+
+        {/* Filter PEA Only */}
+        <button
+          onClick={() => onFilterTypeChange?.(filterType === 'public' ? 'all' : 'public')}
+          title="คลิกเพื่อแสดงเฉพาะหม้อแปลง กฟภ. (จำหน่ายทั่วไป) หรือคลิกซ้ำเพื่อแสดงทั้งหมด"
+          className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+            filterType === 'public'
+              ? 'bg-purple-600 text-white shadow-xs font-bold ring-2 ring-purple-300 dark:ring-purple-700'
+              : filterType === 'private'
+              ? 'opacity-40 hover:opacity-80 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40'
+              : 'hover:bg-purple-50 dark:hover:bg-purple-950/40 text-purple-700 dark:text-purple-300'
+          }`}
+        >
+          <svg width="14" height="12" viewBox="0 0 18 16" className="inline-block shrink-0">
+            <polygon points="9,2 16,14 2,14" fill={filterType === 'public' ? '#ffffff' : '#ffffff'} stroke={filterType === 'public' ? '#ffffff' : '#9333ea'} strokeWidth="2" />
           </svg>
-          <span className="font-semibold text-amber-700 dark:text-amber-400">1 เฟส 1 เครื่อง (ป้าย 1Ø)</span>
-        </div>
-        <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
-          <svg width="44" height="16" viewBox="0 0 44 16" className="inline-block">
-            <polygon points="6,2 12,14 0,14" fill="#ffffff" stroke="#9333ea" strokeWidth="1.8" />
-            <polygon points="12,2 18,14 6,14" fill="#ffffff" stroke="#9333ea" strokeWidth="1.8" />
-            <rect x="20" y="2" width="22" height="12" rx="2" fill="#9333ea" />
-            <text x="31" y="11" fontSize="7.5" fontWeight="bold" fill="#ffffff" textAnchor="middle">2x1Ø</text>
+          <span>กฟภ. ({publicCount})</span>
+          {filterType === 'public' && <span className="text-[10px] bg-white/20 px-1 rounded">เท่านั้น</span>}
+        </button>
+
+        {/* Filter Customer Only */}
+        <button
+          onClick={() => onFilterTypeChange?.(filterType === 'private' ? 'all' : 'private')}
+          title="คลิกเพื่อแสดงเฉพาะหม้อแปลงของผู้ใช้ไฟ (เฉพาะราย) หรือคลิกซ้ำเพื่อแสดงทั้งหมด"
+          className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+            filterType === 'private'
+              ? 'bg-blue-600 text-white shadow-xs font-bold ring-2 ring-blue-300 dark:ring-blue-700'
+              : filterType === 'public'
+              ? 'opacity-40 hover:opacity-80 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40'
+              : 'hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-700 dark:text-blue-300'
+          }`}
+        >
+          <svg width="14" height="12" viewBox="0 0 18 16" className="inline-block shrink-0">
+            <polygon points="9,2 16,14 2,14" fill={filterType === 'private' ? '#ffffff' : '#2563eb'} stroke={filterType === 'private' ? '#ffffff' : '#2563eb'} strokeWidth="2" />
           </svg>
-          <span className="font-semibold text-purple-700 dark:text-purple-300">1 เฟส 2 เครื่อง (ป้าย 2x1Ø)</span>
-        </div>
-        <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
-          <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
-          <span>สายป้อน / สวิตช์</span>
+          <span>ผู้ใช้ไฟ ({privateCount})</span>
+          {filterType === 'private' && <span className="text-[10px] bg-white/20 px-1 rounded">เท่านั้น</span>}
+        </button>
+
+        {/* Toggle Hide All */}
+        <button
+          onClick={() => onFilterTypeChange?.(filterType === 'none' ? 'all' : 'none')}
+          title={filterType === 'none' ? 'คลิกเพื่อเปิดแสดงสัญลักษณ์หม้อแปลง' : 'คลิกเพื่อซ่อนสัญลักษณ์หม้อแปลงทั้งหมด (ดูเฉพาะสายและสวิตช์)'}
+          className={`px-2 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
+            filterType === 'none'
+              ? 'bg-rose-600 text-white font-bold ring-2 ring-rose-300'
+              : 'hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600'
+          }`}
+        >
+          {filterType === 'none' ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          <span>{filterType === 'none' ? 'หม้อแปลงถูกซ่อนอยู่' : 'ซ่อนหม้อแปลง'}</span>
+        </button>
+
+        <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+        {/* Phase Guide Mini Icons */}
+        <div className="hidden lg:flex items-center gap-2.5 text-slate-500 dark:text-slate-400">
+          <div className="flex items-center gap-1">
+            <svg width="24" height="14" viewBox="0 0 28 16" className="inline-block">
+              <polygon points="8,2 14,14 2,14" fill="#ffffff" stroke="#9333ea" strokeWidth="2" />
+              <rect x="16" y="2" width="12" height="12" rx="2" fill="#9333ea" />
+              <text x="22" y="11" fontSize="8" fontWeight="bold" fill="#ffffff" textAnchor="middle">1Ø</text>
+            </svg>
+            <span className="text-[11px]">1 เฟส 1 เครื่อง</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <svg width="38" height="14" viewBox="0 0 44 16" className="inline-block">
+              <polygon points="6,2 12,14 0,14" fill="#ffffff" stroke="#9333ea" strokeWidth="1.8" />
+              <polygon points="12,2 18,14 6,14" fill="#ffffff" stroke="#9333ea" strokeWidth="1.8" />
+              <rect x="20" y="2" width="22" height="12" rx="2" fill="#9333ea" />
+              <text x="31" y="11" fontSize="7.5" fontWeight="bold" fill="#ffffff" textAnchor="middle">2x1Ø</text>
+            </svg>
+            <span className="text-[11px]">1 เฟส 2 เครื่อง</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 bg-red-500 rounded-xs"></div>
+            <span className="text-[11px]">สวิตช์</span>
+          </div>
         </div>
       </div>
 
@@ -2223,7 +2787,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         ref={containerRef}
         id="diagram-container"
         className={`relative flex-1 w-full h-full cursor-${
-          isPanning ? 'grabbing' : canvasClickMode === 'add' || canvasClickMode === 'draw_line' ? 'crosshair' : 'default'
+          isPanning || multiDragging || draggingVertex ? 'grabbing' : canvasClickMode === 'add' || canvasClickMode === 'draw_line' ? 'crosshair' : 'default'
         } ${themeStyles.bg}`}
         onMouseMove={handleMouseMoveOnCanvas}
         onMouseDown={handleMouseDownCanvas}
@@ -2442,27 +3006,30 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 {/* Interactive Vertex Nodes in Edit Mode */}
                 {isLineEditing && path.points.map((pt, i) => {
                   const isBeingDragged = draggingVertex?.pathId === path.id && draggingVertex.pointIndex === i;
+                  const vDx = isBeingDragged ? (draggingVertex?.dx || 0) : 0;
+                  const vDy = isBeingDragged ? (draggingVertex?.dy || 0) : 0;
+                  const cx = Math.round(pt.x + pDx + vDx);
+                  const cy = Math.round(pt.y + pDy + vDy);
 
                   return (
                     <g key={i} className="cursor-move">
                       {/* Vertex Joint Draggable Circle */}
                       <circle
-                        cx={pt.x}
-                        cy={pt.y}
+                        cx={cx}
+                        cy={cy}
                         r={isBeingDragged ? 7 : isSelected ? 5.5 : 4}
                         fill={isBeingDragged ? '#2563eb' : '#ffffff'}
                         stroke="#2563eb"
                         strokeWidth={2}
-                        className="transition-all hover:scale-125"
                         onMouseDown={(e) => startDragVertex(path.id, i, pt.x, pt.y, e)}
                         onDoubleClick={(e) => handleDeleteVertex(path.id, i, e)}
                       />
                       {/* Coordinate label while dragging */}
                       {isBeingDragged && (
-                        <g transform={`translate(${pt.x}, ${pt.y - 18})`} className="pointer-events-none">
+                        <g transform={`translate(${cx}, ${cy - 18})`} className="pointer-events-none">
                           <rect x="-35" y="-10" width="70" height="18" rx="4" fill="#1e293b" fillOpacity="0.9" />
                           <text x="0" y="3" fill="#ffffff" fontSize="9" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
-                            X:{pt.x} Y:{pt.y}
+                            X:{cx} Y:{cy}
                           </text>
                         </g>
                       )}
@@ -2491,7 +3058,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                         fill="#10b981"
                         stroke="#ffffff"
                         strokeWidth="1.5"
-                        className="transition-transform group-hover:scale-125 shadow-sm"
+                        className="shadow-sm hover:opacity-90"
                       />
                       <line x1="-3" y1="0" x2="3" y2="0" stroke="#ffffff" strokeWidth="1.5" />
                       <line x1="0" y1="-3" x2="0" y2="3" stroke="#ffffff" strokeWidth="1.5" />
@@ -2915,7 +3482,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 )}
 
                 {/* Quick On-Canvas Direction Switcher for Selected Landmark/Annotation */}
-                {isSelected && !isReadOnly && onUpdateAnnotation && (
+                {isSelected && !isBeingDragged && !isReadOnly && onUpdateAnnotation && (
                   <g transform={`translate(0, ${hitY - 26})`} className="pointer-events-auto">
                     <rect
                       x="-86"
@@ -2979,6 +3546,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           {/* Switches and Cutouts Layer */}
           {displayData.switches.map(sw => {
             const isTag = sw.type === 'FEEDER_TAG';
+            const isMultiSelected = multiSelection.switchIds.includes(sw.id);
             const isBeingDragged = multiDragging?.items.switches.some(x => x.id === sw.id);
             const isSelected = selectedSwitchId === sw.id || isMultiSelected;
             const isOpened = sw.status === 'opened';
@@ -2989,9 +3557,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
               <g
                 key={sw.id}
                 transform={`translate(${curRenderX}, ${curRenderY}) rotate(${sw.rotation || 0}) scale(${symbolScale})`}
-                className={`transition-opacity duration-200 ${
+                className={
                   isDraggable ? (isBeingDragged ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'
-                }`}
+                }
                 onClick={(e) => {
                   e.stopPropagation();
                   if (dragMovedRef.current) return;
@@ -3216,9 +3784,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 key={t.id}
                 id={`tr-node-${t.id}`}
                 transform={`translate(${curRenderX}, ${curRenderY}) scale(${symbolScale})`}
-                className={`transition-opacity duration-200 ${
+                className={
                   isDraggable ? (isBeingDragged ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'
-                }`}
+                }
                 onClick={(e) => {
                   e.stopPropagation();
                   if (dragMovedRef.current) return;
@@ -3289,7 +3857,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 {/* Transformer Triangle (Equilateral Symbol) */}
                 {t.phase === '2x1P' ? (
                   // หม้อแปลง 1 เฟส จุดเดียวกัน 2 เครื่อง: สัญลักษณ์รูปสามเหลี่ยมคู่ (Twin Triangles)
-                  <g className="transition-transform duration-150 hover:scale-110">
+                  <g>
                     <g transform={`translate(${
                       orientation === 'top' || orientation === 'bottom' ? '-7, 0' : '0, -7'
                     })`}>
@@ -3320,7 +3888,6 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     stroke={triStroke}
                     strokeWidth="2"
                     strokeLinejoin="round"
-                    className="transition-transform duration-150 hover:scale-110"
                   />
                 )}
 
@@ -3482,7 +4049,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                 </g>
 
                 {/* Quick actions popup when selected */}
-                {isSelected && (
+                {isSelected && !isBeingDragged && (
                   <g transform={`translate(0, ${quickActionY})`} className="pointer-events-auto">
                     {isValidLatLng(t.latitude, t.longitude) ? (
                       <>
@@ -3614,97 +4181,108 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           )}
 
           {/* Group Selection Bounding Box & Drag Handle */}
-          {selectedBounds && totalSelectedCount >= 2 && (
-            <g className="pointer-events-auto">
-              {/* Outer Dashed Boundary Box */}
-              <rect
-                x={selectedBounds.minX}
-                y={selectedBounds.minY}
-                width={selectedBounds.width}
-                height={selectedBounds.height}
-                fill="#0284c7"
-                fillOpacity="0.05"
-                stroke="#0284c7"
-                strokeWidth="1.8"
-                strokeDasharray="6,4"
-                rx="8"
-                className="cursor-move"
-                onMouseDown={(e) => {
-                  const firstTf = multiSelection.transformerIds[0];
-                  const firstSw = multiSelection.switchIds[0];
-                  const firstPath = multiSelection.pathIds[0];
-                  const firstAnn = multiSelection.annotationIds[0];
-                  if (firstTf) startDragMulti('transformer', firstTf, e);
-                  else if (firstSw) startDragMulti('switch', firstSw, e);
-                  else if (firstPath) startDragMulti('path', firstPath, e);
-                  else if (firstAnn) startDragMulti('annotation', firstAnn, e);
-                }}
-              />
+          {selectedBounds && totalSelectedCount >= 2 && (() => {
+            const bDx = multiDragging ? Math.round(multiDragging.dx || 0) : 0;
+            const bDy = multiDragging ? Math.round(multiDragging.dy || 0) : 0;
+            const bMinX = selectedBounds.minX + bDx;
+            const bMinY = selectedBounds.minY + bDy;
+            const bMaxX = selectedBounds.maxX + bDx;
+            const bMaxY = selectedBounds.maxY + bDy;
+            const bWidth = selectedBounds.width;
+            const bHeight = selectedBounds.height;
 
-              {/* Corner brackets for CAD styling */}
-              <path
-                d={`M ${selectedBounds.minX + 10} ${selectedBounds.minY} L ${selectedBounds.minX} ${selectedBounds.minY} L ${selectedBounds.minX} ${selectedBounds.minY + 10}`}
-                fill="none"
-                stroke="#0284c7"
-                strokeWidth="2.5"
-              />
-              <path
-                d={`M ${selectedBounds.maxX - 10} ${selectedBounds.minY} L ${selectedBounds.maxX} ${selectedBounds.minY} L ${selectedBounds.maxX} ${selectedBounds.minY + 10}`}
-                fill="none"
-                stroke="#0284c7"
-                strokeWidth="2.5"
-              />
-              <path
-                d={`M ${selectedBounds.minX + 10} ${selectedBounds.maxY} L ${selectedBounds.minX} ${selectedBounds.maxY} L ${selectedBounds.minX} ${selectedBounds.maxY - 10}`}
-                fill="none"
-                stroke="#0284c7"
-                strokeWidth="2.5"
-              />
-              <path
-                d={`M ${selectedBounds.maxX - 10} ${selectedBounds.maxY} L ${selectedBounds.maxX} ${selectedBounds.maxY} L ${selectedBounds.maxX} ${selectedBounds.maxY - 10}`}
-                fill="none"
-                stroke="#0284c7"
-                strokeWidth="2.5"
-              />
-
-              {/* Top Move Handle Badge */}
-              <g
-                transform={`translate(${selectedBounds.minX}, ${selectedBounds.minY - 26})`}
-                className="cursor-move group"
-                onMouseDown={(e) => {
-                  const firstTf = multiSelection.transformerIds[0];
-                  const firstSw = multiSelection.switchIds[0];
-                  const firstPath = multiSelection.pathIds[0];
-                  const firstAnn = multiSelection.annotationIds[0];
-                  if (firstTf) startDragMulti('transformer', firstTf, e);
-                  else if (firstSw) startDragMulti('switch', firstSw, e);
-                  else if (firstPath) startDragMulti('path', firstPath, e);
-                  else if (firstAnn) startDragMulti('annotation', firstAnn, e);
-                }}
-              >
+            return (
+              <g className="pointer-events-auto">
+                {/* Outer Dashed Boundary Box */}
                 <rect
-                  x="0"
-                  y="0"
-                  width="130"
-                  height="22"
-                  rx="6"
+                  x={bMinX}
+                  y={bMinY}
+                  width={bWidth}
+                  height={bHeight}
                   fill="#0284c7"
-                  className="group-hover:fill-sky-600 transition-colors shadow-md"
+                  fillOpacity="0.05"
+                  stroke="#0284c7"
+                  strokeWidth="1.8"
+                  strokeDasharray="6,4"
+                  rx="8"
+                  className="cursor-move"
+                  onMouseDown={(e) => {
+                    const firstTf = multiSelection.transformerIds[0];
+                    const firstSw = multiSelection.switchIds[0];
+                    const firstPath = multiSelection.pathIds[0];
+                    const firstAnn = multiSelection.annotationIds[0];
+                    if (firstTf) startDragMulti('transformer', firstTf, e);
+                    else if (firstSw) startDragMulti('switch', firstSw, e);
+                    else if (firstPath) startDragMulti('path', firstPath, e);
+                    else if (firstAnn) startDragMulti('annotation', firstAnn, e);
+                  }}
                 />
-                <text
-                  x="65"
-                  y="15"
-                  fill="#ffffff"
-                  fontSize="10.5"
-                  fontWeight="bold"
-                  textAnchor="middle"
-                  fontFamily="sans-serif"
+
+                {/* Corner brackets for CAD styling */}
+                <path
+                  d={`M ${bMinX + 10} ${bMinY} L ${bMinX} ${bMinY} L ${bMinX} ${bMinY + 10}`}
+                  fill="none"
+                  stroke="#0284c7"
+                  strokeWidth="2.5"
+                />
+                <path
+                  d={`M ${bMaxX - 10} ${bMinY} L ${bMaxX} ${bMinY} L ${bMaxX} ${bMinY + 10}`}
+                  fill="none"
+                  stroke="#0284c7"
+                  strokeWidth="2.5"
+                />
+                <path
+                  d={`M ${bMinX + 10} ${bMaxY} L ${bMinX} ${bMaxY} L ${bMinX} ${bMaxY - 10}`}
+                  fill="none"
+                  stroke="#0284c7"
+                  strokeWidth="2.5"
+                />
+                <path
+                  d={`M ${bMaxX - 10} ${bMaxY} L ${bMaxX} ${bMaxY} L ${bMaxX} ${bMaxY - 10}`}
+                  fill="none"
+                  stroke="#0284c7"
+                  strokeWidth="2.5"
+                />
+
+                {/* Top Move Handle Badge */}
+                <g
+                  transform={`translate(${bMinX}, ${bMinY - 26})`}
+                  className="cursor-move group"
+                  onMouseDown={(e) => {
+                    const firstTf = multiSelection.transformerIds[0];
+                    const firstSw = multiSelection.switchIds[0];
+                    const firstPath = multiSelection.pathIds[0];
+                    const firstAnn = multiSelection.annotationIds[0];
+                    if (firstTf) startDragMulti('transformer', firstTf, e);
+                    else if (firstSw) startDragMulti('switch', firstSw, e);
+                    else if (firstPath) startDragMulti('path', firstPath, e);
+                    else if (firstAnn) startDragMulti('annotation', firstAnn, e);
+                  }}
                 >
-                  ✢ ลากย้าย ({totalSelectedCount} รายการ)
-                </text>
+                  <rect
+                    x="0"
+                    y="0"
+                    width="130"
+                    height="22"
+                    rx="6"
+                    fill="#0284c7"
+                    className="group-hover:fill-sky-600 transition-colors shadow-md"
+                  />
+                  <text
+                    x="65"
+                    y="15"
+                    fill="#ffffff"
+                    fontSize="10.5"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                    fontFamily="sans-serif"
+                  >
+                    ✢ ลากย้าย ({totalSelectedCount} รายการ)
+                  </text>
+                </g>
               </g>
-            </g>
-          )}
+            );
+          })()}
           </g>
         </svg>
 
