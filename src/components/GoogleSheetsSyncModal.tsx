@@ -6,7 +6,8 @@ import {
 } from '../services/googleSheetsService';
 import {
   saveSheetsToCloudFirestore,
-  fetchSheetsFromCloudFirestore
+  fetchSheetsFromCloudFirestore,
+  isQuotaError
 } from '../services/firebaseDbService';
 import { 
   X, 
@@ -110,7 +111,14 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
         text: `บันทึกผังวงจรทั้งหมด ${count} หน้า (รวมหม้อแปลง ${allSheetsTransformers.length} เครื่อง + เส้นวงจร + สวิตช์) ลง Cloud Database กลางสำเร็จ! ทุกคนที่เข้าเว็บจะเห็นข้อมูลชุดนี้ทันที (${now})`
       });
     } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err?.message || 'เกิดข้อผิดพลาดในการบันทึกขึ้น Cloud Database' });
+      if (isQuotaError(err)) {
+        setStatusMessage({
+          type: 'error',
+          text: 'โควตาการเขียน Firebase ประจำวันเต็มแล้ว (20,000 writes/วัน) โควตาจะรีเซ็ตอัตโนมัติในวันพรุ่งนี้ โดยข้อมูลทั้งหมดถูกบันทึกไว้อย่างปลอดภัยในเครื่อง (LocalStorage) เรียบร้อยแล้ว'
+        });
+      } else {
+        setStatusMessage({ type: 'error', text: err?.message || 'เกิดข้อผิดพลาดในการบันทึกขึ้น Cloud Database' });
+      }
     } finally {
       setIsLoading(false);
     }

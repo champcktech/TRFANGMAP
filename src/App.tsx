@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   Transformer, 
   SwitchNode, 
@@ -6,7 +6,8 @@ import {
   AnnotationLabel, 
   AnnotationType,
   GoogleSheetConfig,
-  DiagramSheet
+  DiagramSheet,
+  TransformerDraft
 } from './types';
 import { 
   INITIAL_TRANSFORMERS, 
@@ -31,7 +32,11 @@ import { AnnotationModal } from './components/AnnotationModal';
 import { PrintModal } from './components/PrintModal';
 import { ShareModal } from './components/ShareModal';
 import { LoginPage } from './components/LoginPage';
-import { CheckCircle2, AlertCircle, Info, Undo2, Zap } from 'lucide-react';
+import { TransformerDraftModal } from './components/TransformerDraftModal';
+import { DraftApprovalModal } from './components/DraftApprovalModal';
+import { DataRecoveryModal } from './components/DataRecoveryModal';
+import { FANG_PRESET_SHEETS, scanLocalStorageForBackups } from './data/fangSubstationPresetData';
+import { CheckCircle2, AlertCircle, Info, Undo2, Zap, RotateCcw, AlertTriangle, Sparkles } from 'lucide-react';
 
 import { decodeSheetsFromPayload } from './utils/shareUtils';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -39,7 +44,10 @@ import { auth } from './firebase';
 import { 
   saveSheetsToCloudFirestore, 
   fetchSheetsFromCloudFirestore,
-  signOutFromCloud 
+  signOutFromCloud,
+  isQuotaError,
+  subscribeToTransformerDrafts,
+  approveTransformerDraft
 } from './services/firebaseDbService';
 
 const STORAGE_KEY_SHEETS = 'pea_sld_all_sheets_v7_clean';
@@ -163,12 +171,7 @@ function createDefaultPresetSheets(legacyTfs: Transformer[] = [], legacySwitches
 }
 
 function getInitialSheets(): DiagramSheet[] {
-  // Clean up legacy storage keys that held old transformers or Google Sheets URLs
-  try {
-    if (typeof window !== 'undefined') {
-      LEGACY_STORAGE_KEYS.forEach(k => localStorage.removeItem(k));
-    }
-  } catch (e) {}
+  let loadedSheets: DiagramSheet[] | null = null;
 
   // 1. Check if URL contains embedded share data (#data=... or ?data=...)
   try {
@@ -178,16 +181,16 @@ function getInitialSheets(): DiagramSheet[] {
       if (hash && hash.includes('data=')) {
         const decoded = decodeSheetsFromPayload(hash);
         if (decoded && decoded.sheets.length > 0) {
-          return decoded.sheets;
+          loadedSheets = decoded.sheets;
         }
       }
-      if (search && search.includes('data=')) {
+      if (!loadedSheets && search && search.includes('data=')) {
         const params = new URLSearchParams(search);
         const dataParam = params.get('data');
         if (dataParam) {
           const decoded = decodeSheetsFromPayload(dataParam);
           if (decoded && decoded.sheets.length > 0) {
-            return decoded.sheets;
+            loadedSheets = decoded.sheets;
           }
         }
       }
@@ -196,21 +199,88 @@ function getInitialSheets(): DiagramSheet[] {
     console.error('Failed to parse URL share payload', e);
   }
 
-  // 2. Load from clean v7 localStorage
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY_SHEETS);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+  // 2. Load from v7 localStorage
+  if (!loadedSheets) {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_SHEETS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          loadedSheets = parsed;
+        }
       }
+    } catch (e) {
+      console.error('Failed to load sheets from storage', e);
     }
-  } catch (e) {
-    console.error('Failed to load sheets from storage', e);
   }
 
-  // 3. Fallback & presets (with 0 transformers)
-  return createDefaultPresetSheets([], INITIAL_SWITCHES, INITIAL_FEEDER_PATHS, INITIAL_ANNOTATIONS);
+  // Check if loaded sheets have any transformers
+  const totalTfs = loadedSheets ? loadedSheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0) : 0;
+
+  // 3. If 0 transformers found, auto-scan older localStorage keys for recovery!
+  if (totalTfs === 0) {
+    try {
+      if (typeof window !== 'undefined') {
+        const backupCandidates = scanLocalStorageForBackups();
+        if (backupCandidates.length > 0) {
+          const best = backupCandidates.sort((a, b) => b.transformerCount - a.transformerCount)[0];
+          if (best && Array.isArray(best.data) && best.data.length > 0) {
+            if (best.data[0]?.transformers !== undefined) {
+              const backupSheets = best.data as DiagramSheet[];
+              if (loadedSheets && loadedSheets.length > 0) {
+                loadedSheets = loadedSheets.map(cur => {
+                  const match = backupSheets.find(b => b.id === cur.id || b.sheetNo === cur.sheetNo || b.title === cur.title);
+                  return match && match.transformers && match.transformers.length > 0
+                    ? { ...cur, transformers: match.transformers }
+                    : cur;
+                });
+              } else {
+                loadedSheets = backupSheets;
+              }
+            } else if (best.data[0]?.peaNo) {
+              const tfs = best.data as Transformer[];
+              if (loadedSheets && loadedSheets.length > 0) {
+                loadedSheets[0] = { ...loadedSheets[0], transformers: tfs };
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error during auto-recovery scan:', e);
+    }
+  }
+
+  // 4. If still 0 transformers and no sheets, return default preset sheets populated with Fang transformers
+  if (!loadedSheets || loadedSheets.length === 0) {
+    const defaultFangTfs = (FANG_PRESET_SHEETS['sheet-1']?.transformers || []) as Transformer[];
+    return createDefaultPresetSheets(defaultFangTfs, INITIAL_SWITCHES, INITIAL_FEEDER_PATHS, INITIAL_ANNOTATIONS);
+  }
+
+  // 5. If sheets exist but has fewer than 35 transformers across all sheets, enrich from FANG_PRESET_SHEETS
+  const finalTotalTfs = loadedSheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0);
+  if (finalTotalTfs < 35) {
+    loadedSheets = loadedSheets.map((s, idx) => {
+      let preset = FANG_PRESET_SHEETS[s.id];
+      if (!preset) {
+        if (s.title?.includes('สวนดอก') || idx === 0) preset = FANG_PRESET_SHEETS['sheet-1'];
+        else if (s.title?.includes('ป่าบง') || idx === 1) preset = FANG_PRESET_SHEETS['sheet-2'];
+        else if (s.title?.includes('โป่งน้ำร้อน') || idx === 2) preset = FANG_PRESET_SHEETS['sheet-3'];
+        else if (s.title?.includes('ม่อบปิ่น') || s.title?.includes('ม่อนปิ่น') || idx === 3) preset = FANG_PRESET_SHEETS['sheet-1792469878954'];
+        else if (s.title?.includes('บ้านลาน') || idx === 4) preset = FANG_PRESET_SHEETS['sheet-1792570504182'];
+        else if (s.title?.includes('ศรีดอนชัย') || idx === 5) preset = FANG_PRESET_SHEETS['sheet-3-sridonchai'];
+      }
+      if (preset?.transformers && (!s.transformers || s.transformers.length < preset.transformers.length)) {
+        return {
+          ...s,
+          transformers: preset.transformers as Transformer[]
+        };
+      }
+      return s;
+    });
+  }
+
+  return loadedSheets;
 }
 
 function getInitialActiveSheetId(initialSheets: DiagramSheet[]): string {
@@ -400,6 +470,31 @@ export default function App() {
   const [isCloudAutoSync, setIsCloudAutoSync] = useState<boolean>(true);
   const [isCloudInitialLoaded, setIsCloudInitialLoaded] = useState<boolean>(false);
 
+  // Draft Proposals & Approval States
+  const [drafts, setDrafts] = useState<TransformerDraft[]>([]);
+  const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
+  const [draftModalActionType, setDraftModalActionType] = useState<'create' | 'update'>('create');
+  const [draftInitialTransformer, setDraftInitialTransformer] = useState<Transformer | null>(null);
+  const [draftProposedPosition, setDraftProposedPosition] = useState<{ x: number; y: number } | undefined>();
+  const [isDraftApprovalModalOpen, setIsDraftApprovalModalOpen] = useState(false);
+  const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
+
+  const totalAllTransformers = useMemo(() => {
+    return sheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0);
+  }, [sheets]);
+
+  // Subscribe to real-time transformer drafts
+  useEffect(() => {
+    const unsubscribe = subscribeToTransformerDrafts((updatedDrafts) => {
+      setDrafts(updatedDrafts);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const pendingDraftsCount = useMemo(() => {
+    return drafts.filter(d => d.status === 'pending').length;
+  }, [drafts]);
+
   // Toast notifications
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
@@ -446,6 +541,38 @@ export default function App() {
     });
   }, [showToast]);
 
+  const handleRestoreFullFangDataset = useCallback(async () => {
+    let total = 0;
+    const updated = sheets.map((s, idx) => {
+      let preset = FANG_PRESET_SHEETS[s.id];
+      if (!preset) {
+        if (s.title?.includes('สวนดอก') || idx === 0) preset = FANG_PRESET_SHEETS['sheet-1'];
+        else if (s.title?.includes('ป่าบง') || idx === 1) preset = FANG_PRESET_SHEETS['sheet-2'];
+        else if (s.title?.includes('โป่งน้ำร้อน') || idx === 2) preset = FANG_PRESET_SHEETS['sheet-3'];
+        else if (s.title?.includes('ม่อบปิ่น') || s.title?.includes('ม่อนปิ่น') || idx === 3) preset = FANG_PRESET_SHEETS['sheet-1792469878954'];
+        else if (s.title?.includes('บ้านลาน') || idx === 4) preset = FANG_PRESET_SHEETS['sheet-1792570504182'];
+        else if (s.title?.includes('ศรีดอนชัย') || idx === 5) preset = FANG_PRESET_SHEETS['sheet-3-sridonchai'];
+      }
+      if (preset?.transformers && preset.transformers.length > 0) {
+        total += preset.transformers.length;
+        return {
+          ...s,
+          title: preset.title || s.title,
+          feederCode: preset.feederCode || s.feederCode,
+          transformers: preset.transformers as Transformer[],
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return s;
+    });
+
+    setSheets(updated);
+    try {
+      await saveSheetsToCloudFirestore(updated);
+    } catch {}
+    showToast(`คืนค่าฐานข้อมูลเต็ม กฟส.ฝาง สำเร็จ (${total} เครื่อง ครบ 6 ผัง)`, 'success');
+  }, [sheets, showToast]);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_SHEET_CONFIG, JSON.stringify(sheetConfig));
@@ -482,23 +609,52 @@ export default function App() {
     let isMounted = true;
     async function initSharedCloudDb() {
       try {
-        const alreadyClearedCloud = localStorage.getItem(STORAGE_KEY_CLEARED_CLOUD_TFS) === 'true';
         const cloudSheets = await fetchSheetsFromCloudFirestore();
 
         if (!isMounted) return;
 
-        if (currentUser && !alreadyClearedCloud) {
-          const baseSheets = cloudSheets.length > 0 ? cloudSheets : sheets;
-          const cleanedSheets = baseSheets.map(s => ({
-            ...s,
-            transformers: [],
-            updatedAt: new Date().toISOString()
-          }));
-          setSheets(cleanedSheets);
-          await saveSheetsToCloudFirestore(cleanedSheets);
-          localStorage.setItem(STORAGE_KEY_CLEARED_CLOUD_TFS, 'true');
-        } else if (cloudSheets.length > 0) {
-          setSheets(cloudSheets);
+        if (cloudSheets.length > 0) {
+          setSheets(prevSheets => {
+            const cloudTotal = cloudSheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0);
+            const prevTotal = prevSheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0);
+
+            if (cloudTotal >= 40) {
+              // Cloud has full comprehensive data (40+ transformers), use cloud!
+              return cloudSheets;
+            } else if (prevTotal >= 40) {
+              // Local has full comprehensive data, keep local and update cloud!
+              saveSheetsToCloudFirestore(prevSheets).catch(console.warn);
+              return prevSheets;
+            } else {
+              // Both have sparse data (< 40 transformers), automatically enrich with complete 100-transformer dataset!
+              const baseList = cloudSheets.length > 0 ? cloudSheets : prevSheets;
+              const populated = baseList.map((s, idx) => {
+                let preset = FANG_PRESET_SHEETS[s.id];
+                if (!preset) {
+                  if (s.title?.includes('สวนดอก') || idx === 0) preset = FANG_PRESET_SHEETS['sheet-1'];
+                  else if (s.title?.includes('ป่าบง') || idx === 1) preset = FANG_PRESET_SHEETS['sheet-2'];
+                  else if (s.title?.includes('โป่งน้ำร้อน') || idx === 2) preset = FANG_PRESET_SHEETS['sheet-3'];
+                  else if (s.title?.includes('ม่อบปิ่น') || s.title?.includes('ม่อนปิ่น') || idx === 3) preset = FANG_PRESET_SHEETS['sheet-1792469878954'];
+                  else if (s.title?.includes('บ้านลาน') || idx === 4) preset = FANG_PRESET_SHEETS['sheet-1792570504182'];
+                  else if (s.title?.includes('ศรีดอนชัย') || idx === 5) preset = FANG_PRESET_SHEETS['sheet-3-sridonchai'];
+                }
+                if (preset?.transformers && (!s.transformers || s.transformers.length < preset.transformers.length)) {
+                  return {
+                    ...s,
+                    title: preset.title || s.title,
+                    feederCode: preset.feederCode || s.feederCode,
+                    transformers: preset.transformers as Transformer[],
+                    updatedAt: new Date().toISOString()
+                  };
+                }
+                return s;
+              });
+
+              // Save the enriched 100-transformer dataset to Cloud Firestore immediately
+              saveSheetsToCloudFirestore(populated).catch(console.warn);
+              return populated;
+            }
+          });
         } else if (currentUser) {
           await saveSheetsToCloudFirestore(sheets);
         }
@@ -526,22 +682,51 @@ export default function App() {
   }, [currentUser]);
 
   // Debounced auto-save to shared Cloud Firestore when sheets change (only when authenticated)
+  const lastSavedSheetsJsonRef = useRef<string>('');
+  const isCloudSyncingRef = useRef<boolean>(false);
+  const quotaExceededToastShownRef = useRef<boolean>(false);
+
   useEffect(() => {
     if (!currentUser || !isCloudAutoSync || !isCloudInitialLoaded || isReadOnly) return;
+
+    // Check if sheets data has actually changed compared to the last saved payload
+    const currentJson = JSON.stringify(sheets);
+    if (currentJson === lastSavedSheetsJsonRef.current) return;
+
     const timer = setTimeout(async () => {
+      if (isCloudSyncingRef.current) return;
+      isCloudSyncingRef.current = true;
       try {
         await saveSheetsToCloudFirestore(sheets);
+        lastSavedSheetsJsonRef.current = currentJson;
         setSheetConfig(prev => ({
           ...prev,
           lastSyncedAt: new Date().toLocaleTimeString('th-TH'),
-          syncStatus: 'success'
+          syncStatus: 'success',
+          errorMessage: undefined
         }));
-      } catch (err) {
-        console.warn('Auto-save to Cloud Firestore failed:', err);
+      } catch (err: any) {
+        console.warn('Auto-save to Cloud Firestore notice:', err);
+        const isQuota = isQuotaError(err);
+        setSheetConfig(prev => ({
+          ...prev,
+          syncStatus: 'error',
+          errorMessage: isQuota
+            ? 'โควตา Cloud ประจำวันเต็ม (ทำงานในโหมด Offline)'
+            : 'บันทึกลง Cloud ไม่สำเร็จ (ทำงานในโหมด Offline)'
+        }));
+
+        if (isQuota && !quotaExceededToastShownRef.current) {
+          quotaExceededToastShownRef.current = true;
+          showToast('โควตา Firebase ประจำวันเต็มแล้ว ระบบได้บันทึกข้อมูลลงในเครื่อง (LocalStorage) อย่างปลอดภัย', 'info');
+        }
+      } finally {
+        isCloudSyncingRef.current = false;
       }
-    }, 1500);
+    }, 3500);
+
     return () => clearTimeout(timer);
-  }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly, currentUser]);
+  }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly, currentUser, showToast]);
 
   // Calculations
   const totalKva = useMemo(() => {
@@ -1081,13 +1266,102 @@ export default function App() {
     showToast(`ลบหม้อแปลงจำนวน ${ids.length} รายการเรียบร้อยแล้ว`, 'info');
   };
 
+  const handleOpenProposeCreateDraft = (pos?: { x: number; y: number }) => {
+    setDraftModalActionType('create');
+    setDraftInitialTransformer(null);
+    setDraftProposedPosition(pos || { x: 500, y: 400 });
+    setIsDraftModalOpen(true);
+  };
+
+  const handleOpenProposeEditDraft = (t: Transformer) => {
+    setDraftModalActionType('update');
+    setDraftInitialTransformer(t);
+    setDraftProposedPosition({ x: t.x, y: t.y });
+    setIsDraftModalOpen(true);
+  };
+
+  const handleApproveAndApplyDraft = async (draft: TransformerDraft) => {
+    try {
+      const targetSheetId = draft.sheetId;
+      const proposed = draft.transformerData;
+
+      setSheets(prevSheets => {
+        return prevSheets.map(sheet => {
+          if (sheet.id !== targetSheetId) return sheet;
+
+          const currentTfs = sheet.transformers || [];
+          let updatedTfs = [...currentTfs];
+
+          if (draft.actionType === 'create') {
+            const newTf: Transformer = {
+              id: `tf-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              peaNo: proposed.peaNo || 'PEA-DRAFT',
+              name: proposed.name || 'หม้อแปลงใหม่',
+              kva: proposed.kva || 100,
+              type: proposed.type || 'public',
+              phase: proposed.phase || '3P',
+              poleNo: proposed.poleNo || '',
+              feeder: proposed.feeder || sheet.feederCode || 'FAA-06',
+              branch: proposed.branch || '',
+              x: proposed.x || 500,
+              y: proposed.y || 400,
+              latitude: proposed.latitude,
+              longitude: proposed.longitude,
+              orientation: proposed.orientation || 'top',
+              textPosition: proposed.textPosition || 'auto',
+              notes: proposed.notes || (draft.requesterName ? `เสนอโดย: ${draft.requesterName}` : undefined)
+            };
+            updatedTfs = [newTf, ...updatedTfs];
+          } else if (draft.actionType === 'update') {
+            const originalId = draft.targetTransformerId;
+            updatedTfs = updatedTfs.map(t => {
+              if (t.id === originalId || (t.peaNo && t.peaNo === proposed.peaNo)) {
+                return {
+                  ...t,
+                  ...proposed,
+                  id: t.id,
+                  x: proposed.x !== undefined ? proposed.x : t.x,
+                  y: proposed.y !== undefined ? proposed.y : t.y
+                };
+              }
+              return t;
+            });
+          }
+
+          return {
+            ...sheet,
+            transformers: updatedTfs,
+            updatedAt: new Date().toISOString()
+          };
+        });
+      });
+
+      const adminEmail = currentUser?.email || currentUser?.displayName || 'admin';
+      await approveTransformerDraft(draft.id, adminEmail);
+
+      showToast(`อนุมัติและนำหม้อแปลง ${proposed.peaNo || ''} เข้าสู่ผังแล้ว`, 'success');
+    } catch (err: any) {
+      console.error('Failed to approve draft:', err);
+      showToast(err.message || 'เกิดข้อผิดพลาดในการอนุมัติแบบร่าง', 'error');
+      throw err;
+    }
+  };
+
   const handleOpenAddModal = (pos?: { x: number; y: number }) => {
+    if (isReadOnly && !currentUser) {
+      handleOpenProposeCreateDraft(pos);
+      return;
+    }
     setEditingTransformer(null);
     setNewTransformerDefaultPos(pos || { x: 400, y: 400 });
     setIsModalOpen(true);
   };
 
   const handleEditTransformer = (t: Transformer) => {
+    if (isReadOnly && !currentUser) {
+      handleOpenProposeEditDraft(t);
+      return;
+    }
     const original = transformers.find(item => item.id === t.id) || t;
     setEditingTransformer(original);
     setIsModalOpen(true);
@@ -1200,7 +1474,44 @@ export default function App() {
         onPrintDiagram={() => setIsPrintModalOpen(true)}
         onOpenShareModal={() => setIsShareModalOpen(true)}
         onOpenEditSheetModal={() => handleOpenEditSheetModal(activeSheet)}
+        pendingDraftsCount={pendingDraftsCount}
+        onOpenDraftApprovalModal={() => setIsDraftApprovalModalOpen(true)}
+        onOpenProposeDraft={() => handleOpenProposeCreateDraft()}
+        onOpenRecoveryModal={() => setIsRecoveryModalOpen(true)}
       />
+
+      {/* Transformers Recovery Alert Banner */}
+      {totalAllTransformers < 40 && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>
+              {totalAllTransformers === 0 ? (
+                <b>ยังไม่มีข้อมูลหม้อแปลงในผัง:</b>
+              ) : (
+                <b>ตรวจพบข้อมูลหม้อแปลง {totalAllTransformers} เครื่อง:</b>
+              )}
+              {' '}สามารถกดปุ่มเพื่อโหลดฐานข้อมูลฉบับสมบูรณ์ กฟส.ฝาง (100 เครื่อง ครบ 6 ผัง) หรือสแกนกู้คืนจากแคชในเครื่องได้ทันที
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRestoreFullFangDataset}
+              className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>โหลดข้อมูลเต็ม 100 เครื่อง</span>
+            </button>
+            <button
+              onClick={() => setIsRecoveryModalOpen(true)}
+              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>เปิดศูนย์กู้คืนข้อมูล</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Multi-Sheet Tab Bar */}
       <SheetTabs
@@ -1299,6 +1610,7 @@ export default function App() {
               onEdit={handleEditTransformer}
               onDelete={handleDeleteTransformer}
               onUpdatePosition={handleUpdatePosition}
+              onProposeDraftEdit={handleOpenProposeEditDraft}
             />
 
             {/* Selected Feeder Line Detail Drawer */}
@@ -1576,6 +1888,63 @@ export default function App() {
           />
         </div>
       )}
+
+      {/* Transformer Draft Proposal Modal (For Guest or View-only users) */}
+      <TransformerDraftModal
+        isOpen={isDraftModalOpen}
+        onClose={() => setIsDraftModalOpen(false)}
+        sheetId={activeSheet.id}
+        sheetTitle={activeSheet.title}
+        actionType={draftModalActionType}
+        initialTransformer={draftInitialTransformer}
+        proposedPosition={draftProposedPosition}
+        onDraftSubmitted={() => {
+          showToast('ส่งแบบร่างเรียบร้อยแล้ว รอผู้ดูแลระบบตรวจสอบและอนุมัติ', 'success');
+        }}
+        showToast={showToast}
+      />
+
+      {/* Admin Review / User Tracking Drafts Modal */}
+      <DraftApprovalModal
+        isOpen={isDraftApprovalModalOpen}
+        onClose={() => setIsDraftApprovalModalOpen(false)}
+        drafts={drafts}
+        sheets={sheets}
+        currentUser={currentUser ? {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          displayName: currentUser.displayName
+        } : null}
+        onApproveAndApply={handleApproveAndApplyDraft}
+        onNavigateToTransformer={(targetSheetId, transformerId) => {
+          setActiveSheetId(targetSheetId);
+          if (transformerId) {
+            const sh = sheets.find(s => s.id === targetSheetId);
+            const tf = sh?.transformers?.find(t => t.id === transformerId);
+            if (tf) setSelectedTransformer(tf);
+          }
+          setIsDraftApprovalModalOpen(false);
+          showToast('ไปยังตำแหน่งหม้อแปลงที่เลือกแล้ว', 'info');
+        }}
+        showToast={showToast}
+      />
+
+      {/* Emergency Data Recovery Modal */}
+      <DataRecoveryModal
+        isOpen={isRecoveryModalOpen}
+        onClose={() => setIsRecoveryModalOpen(false)}
+        currentSheets={sheets}
+        onRestoreSheets={(restored) => {
+          setSheets(restored);
+          try {
+            localStorage.setItem(STORAGE_KEY_SHEETS, JSON.stringify(restored));
+          } catch {}
+          if (restored[0]) {
+            setActiveSheetId(restored[0].id);
+          }
+        }}
+        showToast={showToast}
+      />
     </div>
   );
 }

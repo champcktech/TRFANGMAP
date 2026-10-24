@@ -25,7 +25,10 @@ import {
   Edit3,
   X,
   Compass,
-  ArrowRight
+  ArrowRight,
+  FileText,
+  ClipboardList,
+  RotateCcw
 } from 'lucide-react';
 import { GoogleSheetConfig, DiagramSheet, Transformer, AnnotationLabel } from '../types';
 
@@ -63,8 +66,12 @@ interface NavbarProps {
   onOpenShareModal?: () => void;
   onOpenAddModal: () => void;
   onOpenGoogleSheetsModal: () => void;
-  onPrintDiagram: () => void;
+  onOpenPrintDiagram?: () => void;
   onOpenEditSheetModal?: () => void;
+  pendingDraftsCount?: number;
+  onOpenDraftApprovalModal?: () => void;
+  onOpenProposeDraft?: () => void;
+  onOpenRecoveryModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -98,7 +105,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAddModal,
   onOpenGoogleSheetsModal,
   onPrintDiagram,
-  onOpenEditSheetModal
+  onOpenEditSheetModal,
+  pendingDraftsCount = 0,
+  onOpenDraftApprovalModal,
+  onOpenProposeDraft,
+  onOpenRecoveryModal
 }) => {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
@@ -697,6 +708,45 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span className="hidden sm:inline">แชร์</span>
         </button>
 
+        {/* Propose Draft Button (For Guest / Unauthenticated users or Read-only mode) */}
+        {(!currentUser || isReadOnly) && onOpenProposeDraft && (
+          <button
+            id="btn-propose-draft"
+            onClick={onOpenProposeDraft}
+            title="เสนอเพิ่มหม้อแปลงใหม่ (ส่งแบบร่างรอผู้ดูแลระบบอนุมัติ)"
+            className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-xs cursor-pointer active:scale-95"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">เสนอเพิ่มหม้อแปลง</span>
+            <span className="sm:hidden">เสนอเพิ่ม</span>
+          </button>
+        )}
+
+        {/* Drafts Review / Tracking Button */}
+        {onOpenDraftApprovalModal && (
+          <button
+            id="btn-draft-approvals"
+            onClick={onOpenDraftApprovalModal}
+            title={currentUser 
+              ? `ตรวจสอบแบบร่างหม้อแปลง (${pendingDraftsCount} รายการรอการอนุมัติ)` 
+              : `ดูสถานะแบบร่างหม้อแปลง (${pendingDraftsCount} รายการรอพิจารณา)`
+            }
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
+              pendingDraftsCount > 0
+                ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 shadow-xs'
+                : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            <ClipboardList className={`w-3.5 h-3.5 ${pendingDraftsCount > 0 ? 'text-white' : 'text-amber-600 dark:text-amber-400'}`} />
+            <span className="hidden sm:inline">แบบร่าง</span>
+            {pendingDraftsCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-white text-amber-700 leading-tight">
+                {pendingDraftsCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {/* Cloud Database Button (Editor only) */}
         {!isReadOnly && (
           <div className="flex items-center gap-0.5">
@@ -717,6 +767,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </button>
           </div>
+        )}
+
+        {/* Data Recovery Center Button */}
+        {onOpenRecoveryModal && (
+          <button
+            id="btn-open-recovery"
+            onClick={onOpenRecoveryModal}
+            title="ศูนย์กู้คืนข้อมูลหม้อแปลง (Data Recovery & Presets)"
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all border border-amber-300 dark:border-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 cursor-pointer shadow-2xs"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <span className="hidden md:inline">กู้คืนข้อมูล</span>
+          </button>
         )}
 
         {/* Print / Export Button */}

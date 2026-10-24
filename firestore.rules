@@ -145,7 +145,8 @@ service cloud.firestore {
     }
 
     match /transformer_drafts/{draftId} {
-      allow get, list: if isValidId(draftId);
+      allow get: if isValidId(draftId);
+      allow list: if true;
 
       // Unauthenticated guests and logged-in users can both submit a pending draft
       allow create: if isValidId(draftId) &&

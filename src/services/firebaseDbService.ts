@@ -115,52 +115,111 @@ function buildValidatedSheetPayload(sheet: DiagramSheet) {
   };
 }
 
+let lastQuotaExceededWarningTime = 0;
+
+export function isQuotaError(err: any): boolean {
+  const msg = (err?.message || String(err || '')).toLowerCase();
+  const code = (err?.code || '').toLowerCase();
+  return (
+    code.includes('resource-exhausted') ||
+    code.includes('resource_exhausted') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('quota exceeded') ||
+    msg.includes('quota limit exceeded') ||
+    msg.includes('free daily write units') ||
+    msg.includes('free daily read units')
+  );
+}
+
+export function withTimeout<T>(
+  promise: Promise<T>, 
+  ms = 6000, 
+  errorMsg = 'หมดเวลาการเชื่อมต่อฐานข้อมูล Cloud (Timeout)'
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(errorMsg)), ms);
+    })
+  ]);
+}
+
 /**
  * Saves all diagram sheets to Firestore under /sheets/{sheetId} in the shared workspace (no login required)
  */
 export async function saveSheetsToCloudFirestore(sheets: DiagramSheet[]): Promise<number> {
+  // If quota was already detected recently (within last 3 minutes), avoid freezing the UI with retries
+  if (Date.now() - lastQuotaExceededWarningTime < 3 * 60 * 1000) {
+    throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบได้บันทึกข้อมูลทั้งหมดลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
+  }
+
   let savedCount = 0;
 
-  for (let i = 0; i < sheets.length; i++) {
-    const sheet = sheets[i];
-    const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${sheet.id}`, i);
-    const sheetPath = `sheets/${docId}`;
-    const docRef = doc(db, 'sheets', docId);
-    const baseData = buildValidatedSheetPayload(sheet);
+  try {
+    // Process sheets with timeout to prevent hanging when backend is exhausted or throttling
+    const savePromises = sheets.map(async (sheet, i) => {
+      const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${sheet.id}`, i);
+      const sheetPath = `sheets/${docId}`;
+      const docRef = doc(db, 'sheets', docId);
+      const baseData = buildValidatedSheetPayload(sheet);
 
-    let exists = false;
-    try {
-      const existingSnap = await getDoc(docRef);
-      exists = existingSnap.exists();
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, sheetPath);
-    }
-
-    try {
-      if (exists) {
-        await updateDoc(docRef, {
-          sheetNo: baseData.sheetNo,
-          title: baseData.title,
-          feederCode: baseData.feederCode,
-          substation: baseData.substation,
-          description: baseData.description,
-          transformers: baseData.transformers,
-          switches: baseData.switches,
-          feederPaths: baseData.feederPaths,
-          annotations: baseData.annotations,
-          updatedAt: serverTimestamp()
-        });
-      } else {
-        await setDoc(docRef, {
-          ...baseData,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
+      let exists = false;
+      try {
+        const existingSnap = await withTimeout(getDoc(docRef), 5000);
+        exists = existingSnap.exists();
+      } catch (error) {
+        if (isQuotaError(error)) {
+          lastQuotaExceededWarningTime = Date.now();
+          throw error;
+        }
       }
-      savedCount++;
-    } catch (error) {
-      handleFirestoreError(error, exists ? OperationType.UPDATE : OperationType.CREATE, sheetPath);
+
+      if (exists) {
+        await withTimeout(
+          updateDoc(docRef, {
+            sheetNo: baseData.sheetNo,
+            title: baseData.title,
+            feederCode: baseData.feederCode,
+            substation: baseData.substation,
+            description: baseData.description,
+            transformers: baseData.transformers,
+            switches: baseData.switches,
+            feederPaths: baseData.feederPaths,
+            annotations: baseData.annotations,
+            updatedAt: serverTimestamp()
+          }),
+          6000
+        );
+      } else {
+        await withTimeout(
+          setDoc(docRef, {
+            ...baseData,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          }),
+          6000
+        );
+      }
+      return true;
+    });
+
+    const results = await Promise.allSettled(savePromises);
+    for (const res of results) {
+      if (res.status === 'fulfilled') {
+        savedCount++;
+      } else {
+        if (isQuotaError(res.reason)) {
+          lastQuotaExceededWarningTime = Date.now();
+          throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบได้บันทึกข้อมูลทั้งหมดลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
+        }
+      }
     }
+  } catch (err: any) {
+    if (isQuotaError(err)) {
+      lastQuotaExceededWarningTime = Date.now();
+      throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบได้บันทึกข้อมูลทั้งหมดลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
+    }
+    throw err;
   }
 
   return savedCount;
@@ -173,7 +232,7 @@ export async function fetchSheetsFromCloudFirestore(): Promise<DiagramSheet[]> {
   const path = 'sheets';
   try {
     const q = query(collection(db, 'sheets'), where('workspaceId', '==', SHARED_WORKSPACE_ID));
-    const snapshot = await getDocs(q);
+    const snapshot = await withTimeout(getDocs(q), 7000, 'หมดเวลาดึงข้อมูลผังจาก Cloud');
     if (snapshot.empty) return [];
 
     const prefix = `${SHARED_WORKSPACE_ID}_`;
@@ -198,7 +257,13 @@ export async function fetchSheetsFromCloudFirestore(): Promise<DiagramSheet[]> {
 
     return result.sort((a, b) => a.sheetNo.localeCompare(b.sheetNo, undefined, { numeric: true }));
   } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, path);
+    if (isQuotaError(error)) {
+      lastQuotaExceededWarningTime = Date.now();
+      console.warn('Firestore Quota exceeded on fetch, falling back to local data.');
+      return [];
+    }
+    console.warn('Failed to fetch from Cloud Firestore, falling back to local storage:', error);
+    return [];
   }
 }
 
