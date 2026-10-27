@@ -110,17 +110,15 @@ service cloud.firestore {
     }
 
     match /sheets/{sheetId} {
-      allow get: if isValidId(sheetId) && (resource == null || isSharedWorkspace(existing().workspaceId));
-      allow list: if existing().workspaceId == 'pea-fang-shared';
+      // Allow read (both get and list) for all devices and viewers so diagrams stay synchronized
+      allow read: if true;
 
-      allow create: if request.auth != null &&
-        isValidId(sheetId) &&
+      allow create: if isValidId(sheetId) &&
         isValidSheet(incoming()) &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
 
-      allow update: if request.auth != null &&
-        isValidId(sheetId) &&
+      allow update: if isValidId(sheetId) &&
         isValidSheet(incoming()) &&
         isSharedWorkspace(existing().workspaceId) &&
         incoming().workspaceId == existing().workspaceId &&
@@ -169,8 +167,8 @@ service cloud.firestore {
           'updatedAt'
         ]);
 
-      // Only authenticated admin users can delete drafts
-      allow delete: if request.auth != null && isValidId(draftId);
+      // Delete drafts
+      allow delete: if isValidId(draftId);
     }
   }
 }

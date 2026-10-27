@@ -753,17 +753,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="btn-google-sheets"
               onClick={onOpenGoogleSheetsModal}
-              title="จัดการฐานข้อมูล Cloud Database (Firebase Firestore)"
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all border cursor-pointer ${
+              title={`ฐานข้อมูลหลัก: Firebase Firestore (เชื่อมต่อสด Real-Time)\nซิงค์ล่าสุด: ${sheetConfig.lastSyncedAt || 'เมื่อสักครู่'}`}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
                 sheetConfig.syncStatus === 'success'
                   ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100'
               }`}
             >
               <Database className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span className="hidden sm:inline">Cloud Database</span>
+              <span className="hidden sm:inline">Firebase Live</span>
               {sheetConfig.syncStatus === 'success' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="เชื่อมต่อ Firebase สด"></span>
               )}
             </button>
           </div>

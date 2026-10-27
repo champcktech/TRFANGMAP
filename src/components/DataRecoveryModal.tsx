@@ -9,7 +9,8 @@ import {
   CheckCircle2, 
   FileSpreadsheet,
   Clock,
-  HardDrive
+  HardDrive,
+  Trash2
 } from 'lucide-react';
 import { DiagramSheet, Transformer } from '../types';
 import { FANG_PRESET_SHEETS, scanLocalStorageForBackups } from '../data/fangSubstationPresetData';
@@ -227,6 +228,33 @@ export const DataRecoveryModal: React.FC<DataRecoveryModalProps> = ({
     reader.readAsText(file, 'utf-8');
   };
 
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+
+  // Option 4: Clear all transformers across all sheets
+  const handleExecuteClearAll = async () => {
+    setIsApplying(true);
+    try {
+      const cleared = currentSheets.map(s => ({
+        ...s,
+        transformers: [],
+        updatedAt: new Date().toISOString()
+      }));
+      onRestoreSheets(cleared);
+      try {
+        await saveSheetsToCloudFirestore(cleared);
+      } catch (err) {
+        console.warn('Cloud save error during clear:', err);
+      }
+      showToast('ลบหม้อแปลงทั้งหมดเรียบร้อยแล้ว (0 เครื่อง)', 'info');
+      setConfirmClearAll(false);
+      onClose();
+    } catch (err: any) {
+      showToast(err.message || 'เกิดข้อผิดพลาดในการลบหม้อแปลง', 'error');
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-150">
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
@@ -400,6 +428,52 @@ export const DataRecoveryModal: React.FC<DataRecoveryModalProps> = ({
                   onChange={handleCsvUpload}
                 />
               </label>
+            </div>
+          </div>
+
+          {/* Option 4: Clear All Transformers */}
+          <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 space-y-2">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>4. ลบหม้อแปลงออกทั้งหมด (Clear All Transformers)</span>
+                </h4>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                  ลบหม้อแปลงทุกเครื่องออกจากผังทุกหน้าให้เหลือ 0 เครื่อง โดยยังคงเส้นสายส่งและสวิตช์ไว้ครบถ้วน
+                </p>
+              </div>
+
+              {!confirmClearAll ? (
+                <button
+                  type="button"
+                  disabled={isApplying}
+                  onClick={() => setConfirmClearAll(true)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 active:scale-95 text-white shadow-sm cursor-pointer shrink-0 flex items-center gap-1.5 transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>ลบหม้อแปลงทั้งหมด</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
+                  <button
+                    type="button"
+                    disabled={isApplying}
+                    onClick={handleExecuteClearAll}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 active:scale-95 text-white shadow-md cursor-pointer flex items-center gap-1.5 transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>ยืนยันลบทั้งหมด (0 เครื่อง)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearAll(false)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

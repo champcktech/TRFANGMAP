@@ -35,6 +35,7 @@ import { LoginPage } from './components/LoginPage';
 import { TransformerDraftModal } from './components/TransformerDraftModal';
 import { DraftApprovalModal } from './components/DraftApprovalModal';
 import { DataRecoveryModal } from './components/DataRecoveryModal';
+import { ConfirmModal } from './components/ConfirmModal';
 import { FANG_PRESET_SHEETS, scanLocalStorageForBackups } from './data/fangSubstationPresetData';
 import { CheckCircle2, AlertCircle, Info, Undo2, Zap, RotateCcw, AlertTriangle, Sparkles } from 'lucide-react';
 
@@ -44,6 +45,7 @@ import { auth } from './firebase';
 import { 
   saveSheetsToCloudFirestore, 
   fetchSheetsFromCloudFirestore,
+  subscribeToCloudSheets,
   signOutFromCloud,
   isQuotaError,
   subscribeToTransformerDrafts,
@@ -214,70 +216,10 @@ function getInitialSheets(): DiagramSheet[] {
     }
   }
 
-  // Check if loaded sheets have any transformers
-  const totalTfs = loadedSheets ? loadedSheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0) : 0;
 
-  // 3. If 0 transformers found, auto-scan older localStorage keys for recovery!
-  if (totalTfs === 0) {
-    try {
-      if (typeof window !== 'undefined') {
-        const backupCandidates = scanLocalStorageForBackups();
-        if (backupCandidates.length > 0) {
-          const best = backupCandidates.sort((a, b) => b.transformerCount - a.transformerCount)[0];
-          if (best && Array.isArray(best.data) && best.data.length > 0) {
-            if (best.data[0]?.transformers !== undefined) {
-              const backupSheets = best.data as DiagramSheet[];
-              if (loadedSheets && loadedSheets.length > 0) {
-                loadedSheets = loadedSheets.map(cur => {
-                  const match = backupSheets.find(b => b.id === cur.id || b.sheetNo === cur.sheetNo || b.title === cur.title);
-                  return match && match.transformers && match.transformers.length > 0
-                    ? { ...cur, transformers: match.transformers }
-                    : cur;
-                });
-              } else {
-                loadedSheets = backupSheets;
-              }
-            } else if (best.data[0]?.peaNo) {
-              const tfs = best.data as Transformer[];
-              if (loadedSheets && loadedSheets.length > 0) {
-                loadedSheets[0] = { ...loadedSheets[0], transformers: tfs };
-              }
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Error during auto-recovery scan:', e);
-    }
-  }
-
-  // 4. If still 0 transformers and no sheets, return default preset sheets populated with Fang transformers
+  // 4. If still no sheets, return default preset sheets with empty transformers
   if (!loadedSheets || loadedSheets.length === 0) {
-    const defaultFangTfs = (FANG_PRESET_SHEETS['sheet-1']?.transformers || []) as Transformer[];
-    return createDefaultPresetSheets(defaultFangTfs, INITIAL_SWITCHES, INITIAL_FEEDER_PATHS, INITIAL_ANNOTATIONS);
-  }
-
-  // 5. If sheets exist but has fewer than 35 transformers across all sheets, enrich from FANG_PRESET_SHEETS
-  const finalTotalTfs = loadedSheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0);
-  if (finalTotalTfs < 35) {
-    loadedSheets = loadedSheets.map((s, idx) => {
-      let preset = FANG_PRESET_SHEETS[s.id];
-      if (!preset) {
-        if (s.title?.includes('สวนดอก') || idx === 0) preset = FANG_PRESET_SHEETS['sheet-1'];
-        else if (s.title?.includes('ป่าบง') || idx === 1) preset = FANG_PRESET_SHEETS['sheet-2'];
-        else if (s.title?.includes('โป่งน้ำร้อน') || idx === 2) preset = FANG_PRESET_SHEETS['sheet-3'];
-        else if (s.title?.includes('ม่อบปิ่น') || s.title?.includes('ม่อนปิ่น') || idx === 3) preset = FANG_PRESET_SHEETS['sheet-1792469878954'];
-        else if (s.title?.includes('บ้านลาน') || idx === 4) preset = FANG_PRESET_SHEETS['sheet-1792570504182'];
-        else if (s.title?.includes('ศรีดอนชัย') || idx === 5) preset = FANG_PRESET_SHEETS['sheet-3-sridonchai'];
-      }
-      if (preset?.transformers && (!s.transformers || s.transformers.length < preset.transformers.length)) {
-        return {
-          ...s,
-          transformers: preset.transformers as Transformer[]
-        };
-      }
-      return s;
-    });
+    return createDefaultPresetSheets([], INITIAL_SWITCHES, INITIAL_FEEDER_PATHS, INITIAL_ANNOTATIONS);
   }
 
   return loadedSheets;
@@ -347,8 +289,12 @@ export default function App() {
   const feederPaths = activeSheet.feederPaths || [];
   const annotations = activeSheet.annotations || [];
 
+  // Track if user explicitly performed an edit in the current session
+  const hasUserEditedRef = useRef<boolean>(false);
+
   // Update active sheet items safely
   const updateActiveSheet = useCallback((updater: Partial<DiagramSheet> | ((prev: DiagramSheet) => Partial<DiagramSheet>)) => {
+    hasUserEditedRef.current = true;
     setSheets(prevSheets => {
       return prevSheets.map(sheet => {
         if (sheet.id === activeSheet.id) {
@@ -365,28 +311,33 @@ export default function App() {
   }, [activeSheet.id]);
 
   const setTransformers = useCallback((updater: Transformer[] | ((prev: Transformer[]) => Transformer[])) => {
+    hasUserEditedRef.current = true;
     updateActiveSheet(sheet => ({
       transformers: typeof updater === 'function' ? updater(sheet.transformers || []) : updater
     }));
   }, [updateActiveSheet]);
 
   const setSwitches = useCallback((updater: SwitchNode[] | ((prev: SwitchNode[]) => SwitchNode[])) => {
+    hasUserEditedRef.current = true;
     updateActiveSheet(sheet => ({
       switches: typeof updater === 'function' ? updater(sheet.switches || []) : updater
     }));
   }, [updateActiveSheet]);
 
   const setFeederPaths = useCallback((updater: FeederPath[] | ((prev: FeederPath[]) => FeederPath[])) => {
+    hasUserEditedRef.current = true;
     updateActiveSheet(sheet => ({
       feederPaths: typeof updater === 'function' ? updater(sheet.feederPaths || []) : updater
     }));
   }, [updateActiveSheet]);
 
   const setAnnotations = useCallback((updater: AnnotationLabel[] | ((prev: AnnotationLabel[]) => AnnotationLabel[])) => {
+    hasUserEditedRef.current = true;
     updateActiveSheet(sheet => ({
       annotations: typeof updater === 'function' ? updater(sheet.annotations || []) : updater
     }));
   }, [updateActiveSheet]);
+
 
   // Persist sheets in storage (debounced to prevent UI lag during dragging)
   useEffect(() => {
@@ -566,11 +517,37 @@ export default function App() {
       return s;
     });
 
+    const updatedJson = JSON.stringify(updated);
+    hasUserEditedRef.current = true;
+    lastSavedSheetsJsonRef.current = updatedJson;
     setSheets(updated);
     try {
       await saveSheetsToCloudFirestore(updated);
     } catch {}
     showToast(`คืนค่าฐานข้อมูลเต็ม กฟส.ฝาง สำเร็จ (${total} เครื่อง ครบ 6 ผัง)`, 'success');
+  }, [sheets, showToast]);
+
+  const handleClearAllTransformers = useCallback(async () => {
+    if (!window.confirm('คุณต้องการลบหม้อแปลงทั้งหมดในทุกหน้าผังวงจรหรือไม่? (ผังสายส่งและสวิตช์จะยังคงอยู่)')) {
+      return;
+    }
+    const emptySheets = sheets.map(s => ({
+      ...s,
+      transformers: [],
+      updatedAt: new Date().toISOString()
+    }));
+    const emptyJson = JSON.stringify(emptySheets);
+    hasUserEditedRef.current = true;
+    lastSavedSheetsJsonRef.current = emptyJson;
+    setSheets(emptySheets);
+    setSelectedTransformer(null);
+    try {
+      localStorage.setItem(STORAGE_KEY_SHEETS, emptyJson);
+      await saveSheetsToCloudFirestore(emptySheets);
+      showToast('ลบหม้อแปลงทั้งหมดเรียบร้อยแล้ว (0 เครื่อง)', 'info');
+    } catch (err: any) {
+      showToast('ลบหม้อแปลงในเครื่องเรียบร้อยแล้ว', 'info');
+    }
   }, [sheets, showToast]);
 
   useEffect(() => {
@@ -604,69 +581,36 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Automatically load shared Cloud Firestore data on mount (both for viewers and editors)
+  // Live Synchronization with Firebase Firestore as Primary Source of Truth (SSOT)
+  const lastSavedSheetsJsonRef = useRef<string>('');
+  const isCloudSyncingRef = useRef<boolean>(false);
+  const quotaExceededToastShownRef = useRef<boolean>(false);
+
   useEffect(() => {
     let isMounted = true;
-    async function initSharedCloudDb() {
+
+    // 1. Immediate fetch from Firebase Firestore as primary
+    async function loadPrimaryFromFirebase() {
       try {
         const cloudSheets = await fetchSheetsFromCloudFirestore();
-
         if (!isMounted) return;
 
-        if (cloudSheets.length > 0) {
-          setSheets(prevSheets => {
-            const cloudTotal = cloudSheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0);
-            const prevTotal = prevSheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0);
-
-            if (cloudTotal >= 40) {
-              // Cloud has full comprehensive data (40+ transformers), use cloud!
-              return cloudSheets;
-            } else if (prevTotal >= 40) {
-              // Local has full comprehensive data, keep local and update cloud!
-              saveSheetsToCloudFirestore(prevSheets).catch(console.warn);
-              return prevSheets;
-            } else {
-              // Both have sparse data (< 40 transformers), automatically enrich with complete 100-transformer dataset!
-              const baseList = cloudSheets.length > 0 ? cloudSheets : prevSheets;
-              const populated = baseList.map((s, idx) => {
-                let preset = FANG_PRESET_SHEETS[s.id];
-                if (!preset) {
-                  if (s.title?.includes('สวนดอก') || idx === 0) preset = FANG_PRESET_SHEETS['sheet-1'];
-                  else if (s.title?.includes('ป่าบง') || idx === 1) preset = FANG_PRESET_SHEETS['sheet-2'];
-                  else if (s.title?.includes('โป่งน้ำร้อน') || idx === 2) preset = FANG_PRESET_SHEETS['sheet-3'];
-                  else if (s.title?.includes('ม่อบปิ่น') || s.title?.includes('ม่อนปิ่น') || idx === 3) preset = FANG_PRESET_SHEETS['sheet-1792469878954'];
-                  else if (s.title?.includes('บ้านลาน') || idx === 4) preset = FANG_PRESET_SHEETS['sheet-1792570504182'];
-                  else if (s.title?.includes('ศรีดอนชัย') || idx === 5) preset = FANG_PRESET_SHEETS['sheet-3-sridonchai'];
-                }
-                if (preset?.transformers && (!s.transformers || s.transformers.length < preset.transformers.length)) {
-                  return {
-                    ...s,
-                    title: preset.title || s.title,
-                    feederCode: preset.feederCode || s.feederCode,
-                    transformers: preset.transformers as Transformer[],
-                    updatedAt: new Date().toISOString()
-                  };
-                }
-                return s;
-              });
-
-              // Save the enriched 100-transformer dataset to Cloud Firestore immediately
-              saveSheetsToCloudFirestore(populated).catch(console.warn);
-              return populated;
-            }
-          });
-        } else if (currentUser) {
-          await saveSheetsToCloudFirestore(sheets);
-        }
-        if (isMounted) {
+        if (cloudSheets && cloudSheets.length > 0) {
+          const cloudJson = JSON.stringify(cloudSheets);
+          lastSavedSheetsJsonRef.current = cloudJson;
+          setSheets(cloudSheets);
+          try {
+            localStorage.setItem(STORAGE_KEY_SHEETS, cloudJson);
+          } catch {}
           setSheetConfig(prev => ({
             ...prev,
             lastSyncedAt: new Date().toLocaleTimeString('th-TH'),
-            syncStatus: 'success'
+            syncStatus: 'success',
+            errorMessage: undefined
           }));
         }
-      } catch (err) {
-        console.warn('Initial Cloud Firestore sync warning:', err);
+      } catch (err: any) {
+        console.warn('Initial Cloud Firestore fetch notice:', err);
       } finally {
         if (isMounted) {
           setIsCloudInitialLoaded(true);
@@ -674,20 +618,45 @@ export default function App() {
       }
     }
 
-    initSharedCloudDb();
+    loadPrimaryFromFirebase();
+
+    // 2. Real-time live listener from Firebase Firestore (instant cross-tab & multi-device sync)
+    const unsubscribeCloud = subscribeToCloudSheets(
+      (remoteSheets) => {
+        if (!isMounted || !remoteSheets || remoteSheets.length === 0) return;
+        const remoteJson = JSON.stringify(remoteSheets);
+
+        // Only update local state if remote changed compared to our last saved version
+        if (remoteJson !== lastSavedSheetsJsonRef.current) {
+          lastSavedSheetsJsonRef.current = remoteJson;
+          setSheets(remoteSheets);
+          try {
+            localStorage.setItem(STORAGE_KEY_SHEETS, remoteJson);
+          } catch {}
+          setSheetConfig(prev => ({
+            ...prev,
+            lastSyncedAt: new Date().toLocaleTimeString('th-TH'),
+            syncStatus: 'success',
+            errorMessage: undefined
+          }));
+        }
+      },
+      (err) => {
+        console.warn('Real-time subscription warning:', err);
+      }
+    );
 
     return () => {
       isMounted = false;
+      unsubscribeCloud();
     };
-  }, [currentUser]);
+  }, []);
 
-  // Debounced auto-save to shared Cloud Firestore when sheets change (only when authenticated)
-  const lastSavedSheetsJsonRef = useRef<string>('');
-  const isCloudSyncingRef = useRef<boolean>(false);
-  const quotaExceededToastShownRef = useRef<boolean>(false);
-
+  // Auto-save any local edits directly to Firebase Firestore as Primary Database
   useEffect(() => {
-    if (!currentUser || !isCloudAutoSync || !isCloudInitialLoaded || isReadOnly) return;
+    // CRITICAL: Do NOT auto-save if cloud hasn't initially loaded, or if the user has NOT made any manual edits in this session!
+    // This prevents stale localStorage on other devices from overwriting authoritative Cloud Firestore data upon simply opening the app.
+    if (!isCloudAutoSync || !isCloudInitialLoaded || isReadOnly || !hasUserEditedRef.current) return;
 
     // Check if sheets data has actually changed compared to the last saved payload
     const currentJson = JSON.stringify(sheets);
@@ -699,6 +668,7 @@ export default function App() {
       try {
         await saveSheetsToCloudFirestore(sheets);
         lastSavedSheetsJsonRef.current = currentJson;
+        hasUserEditedRef.current = false;
         setSheetConfig(prev => ({
           ...prev,
           lastSyncedAt: new Date().toLocaleTimeString('th-TH'),
@@ -712,21 +682,21 @@ export default function App() {
           ...prev,
           syncStatus: 'error',
           errorMessage: isQuota
-            ? 'โควตา Cloud ประจำวันเต็ม (ทำงานในโหมด Offline)'
-            : 'บันทึกลง Cloud ไม่สำเร็จ (ทำงานในโหมด Offline)'
+            ? 'โควตา Cloud ประจำวันเต็ม (ทำงานในโหมดแคชในเครื่อง)'
+            : 'บันทึกลง Cloud ไม่สำเร็จ (ทำงานในโหมดออฟไลน์)'
         }));
 
         if (isQuota && !quotaExceededToastShownRef.current) {
           quotaExceededToastShownRef.current = true;
-          showToast('โควตา Firebase ประจำวันเต็มแล้ว ระบบได้บันทึกข้อมูลลงในเครื่อง (LocalStorage) อย่างปลอดภัย', 'info');
+          showToast('โควตา Firebase ประจำวันเต็ม ระบบบันทึกข้อมูลลงในเครื่องอย่างปลอดภัย', 'info');
         }
       } finally {
         isCloudSyncingRef.current = false;
       }
-    }, 3500);
+    }, 600);
 
     return () => clearTimeout(timer);
-  }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly, currentUser, showToast]);
+  }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly, showToast]);
 
   // Calculations
   const totalKva = useMemo(() => {
@@ -788,6 +758,7 @@ export default function App() {
     description?: string;
     cloneFromSheetId?: string;
   }) => {
+    hasUserEditedRef.current = true;
     if (editingSheet) {
       // Edit existing sheet
       setSheets(prev => prev.map(s => {
@@ -873,6 +844,7 @@ export default function App() {
   };
 
   const handleDuplicateSheet = (sheetId: string) => {
+    hasUserEditedRef.current = true;
     const source = sheets.find(s => s.id === sheetId);
     if (!source) return;
 
@@ -899,6 +871,7 @@ export default function App() {
 
     const target = sheets.find(s => s.id === sheetId);
     if (confirm(`คุณต้องการลบหน้า "${target?.sheetNo} ${target?.title}" ใช่หรือไม่?`)) {
+      hasUserEditedRef.current = true;
       setSheets(prev => {
         const remaining = prev.filter(s => s.id !== sheetId);
         if (activeSheetId === sheetId) {
@@ -1386,16 +1359,6 @@ export default function App() {
     }
   };
 
-  const handleClearAllTransformers = () => {
-    setSheets(prev => prev.map(sheet => ({
-      ...sheet,
-      transformers: [],
-      updatedAt: new Date().toISOString()
-    })));
-    setSelectedTransformer(null);
-    showToast('ลบข้อมูลหม้อแปลงทั้งหมดในทุกหน้าผังเรียบร้อยแล้ว (0 เครื่อง)', 'info');
-  };
-
   // Sync active sheet when URL hash or params change
   useEffect(() => {
     const handleUrlChange = () => {
@@ -1480,18 +1443,13 @@ export default function App() {
         onOpenRecoveryModal={() => setIsRecoveryModalOpen(true)}
       />
 
-      {/* Transformers Recovery Alert Banner */}
-      {totalAllTransformers < 40 && (
-        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200 animate-in fade-in duration-200">
+      {/* Transformers Status Banner */}
+      {totalAllTransformers === 0 && (
+        <div className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700 dark:text-slate-300 animate-in fade-in duration-200">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
             <span>
-              {totalAllTransformers === 0 ? (
-                <b>ยังไม่มีข้อมูลหม้อแปลงในผัง:</b>
-              ) : (
-                <b>ตรวจพบข้อมูลหม้อแปลง {totalAllTransformers} เครื่อง:</b>
-              )}
-              {' '}สามารถกดปุ่มเพื่อโหลดฐานข้อมูลฉบับสมบูรณ์ กฟส.ฝาง (100 เครื่อง ครบ 6 ผัง) หรือสแกนกู้คืนจากแคชในเครื่องได้ทันที
+              <b>ผังวงจรว่าง (0 หม้อแปลง):</b> ลบหม้อแปลงทั้งหมดออกเรียบร้อยแล้ว ท่านสามารถคลิกบนเส้นสายส่งเพื่อวางหม้อแปลงใหม่ นำเข้าไฟล์ CSV หรือโหลดชุดข้อมูลมาตรฐาน กฟส.ฝาง ได้ทุกเมื่อ
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1500,14 +1458,14 @@ export default function App() {
               className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>โหลดข้อมูลเต็ม 100 เครื่อง</span>
+              <span>โหลดชุดข้อมูล กฟส.ฝาง (100 เครื่อง)</span>
             </button>
             <button
               onClick={() => setIsRecoveryModalOpen(true)}
-              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold transition-all cursor-pointer flex items-center gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>เปิดศูนย์กู้คืนข้อมูล</span>
+              <span>ศูนย์กู้คืน / นำเข้าไฟล์</span>
             </button>
           </div>
         </div>

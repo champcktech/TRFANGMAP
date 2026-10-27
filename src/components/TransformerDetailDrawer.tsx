@@ -53,6 +53,12 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
 }) => {
   const [copied, setCopied] = React.useState(false);
   const [copiedGps, setCopiedGps] = React.useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsConfirmingDelete(false);
+  }, [transformer?.id]);
+
   if (!transformer) return null;
 
   const hasGps = isValidLatLng(transformer.latitude, transformer.longitude);
@@ -384,26 +390,48 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
           </>
         ) : (
           <>
-            <button
-              onClick={() => onEdit(transformer)}
-              className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm"
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-              <span>แก้ไขข้อมูล</span>
-            </button>
+            {!isConfirmingDelete ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onEdit(transformer)}
+                  className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>แก้ไขข้อมูล</span>
+                </button>
 
-            <button
-              onClick={() => {
-                if (confirm(`คุณต้องการลบหม้อแปลง ${transformer.peaNo} (${transformer.name}) หรือไม่?`)) {
-                  onDelete(transformer.id);
-                  onClose();
-                }
-              }}
-              className="p-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 text-red-600 rounded-xl transition-colors"
-              title="ลบหม้อแปลง"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmingDelete(true)}
+                  className="p-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-xl transition-colors cursor-pointer border border-red-200 dark:border-red-900/50"
+                  title="ลบหม้อแปลงนี้"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 animate-in fade-in duration-150">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDelete(transformer.id);
+                    onClose();
+                  }}
+                  className="flex-1 py-2 px-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>ยืนยันลบหม้อแปลง</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmingDelete(false)}
+                  className="py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

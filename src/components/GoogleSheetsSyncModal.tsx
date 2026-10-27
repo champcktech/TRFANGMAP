@@ -159,11 +159,9 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
     }
   };
 
-  const handleDeleteAllTransformers = async () => {
-    if (!confirm('ยืนยันการลบข้อมูลหม้อแปลงทั้งหมดออกจากทุกหน้าผัง และล้างในฐานข้อมูลกลาง (Cloud Database) หรือไม่?')) {
-      return;
-    }
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
+  const handleDeleteAllTransformers = async () => {
     setIsLoading(true);
     try {
       const clearedSheets = allSheets.map(s => ({
@@ -181,6 +179,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
       }
 
       await saveSheetsToCloudFirestore(clearedSheets);
+      setConfirmDeleteAll(false);
 
       const now = new Date().toLocaleTimeString('th-TH');
       onUpdateConfig({
@@ -378,14 +377,34 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                     ลบหม้อแปลงทั้งหมดออกจากทุกหน้าผัง (คงเส้นสายป้อน สวิตช์ และป้ายชื่อไว้)
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleDeleteAllTransformers}
-                  disabled={isLoading || allSheetsTransformers.length === 0}
-                  className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm cursor-pointer disabled:opacity-50"
-                >
-                  ลบหม้อแปลงทั้งหมด
-                </button>
+                {!confirmDeleteAll ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteAll(true)}
+                    disabled={isLoading}
+                    className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm cursor-pointer disabled:opacity-50"
+                  >
+                    ลบหม้อแปลงทั้งหมด
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 shrink-0 animate-in fade-in duration-150">
+                    <button
+                      type="button"
+                      onClick={handleDeleteAllTransformers}
+                      disabled={isLoading}
+                      className="px-3.5 py-2.5 bg-red-700 hover:bg-red-800 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50 active:scale-95"
+                    >
+                      ยืนยันลบทั้งหมด
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteAll(false)}
+                      className="px-3 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
+                    >
+                      ยกเลิก
+                    </button>
+                  </div>
+                )}
               </div>
 
               {config.lastSyncedAt && (

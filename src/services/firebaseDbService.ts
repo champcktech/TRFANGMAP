@@ -271,7 +271,8 @@ export async function fetchSheetsFromCloudFirestore(): Promise<DiagramSheet[]> {
  * Subscribes to real-time updates of the shared diagram sheets in Cloud Firestore
  */
 export function subscribeToCloudSheets(
-  onUpdate: (sheets: DiagramSheet[]) => void
+  onUpdate: (sheets: DiagramSheet[]) => void,
+  onError?: (err: any) => void
 ): Unsubscribe {
   const path = 'sheets';
   const q = query(collection(db, 'sheets'), where('workspaceId', '==', SHARED_WORKSPACE_ID));
@@ -303,7 +304,8 @@ export function subscribeToCloudSheets(
       onUpdate(loaded);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
+      console.warn('Real-time sheets subscription warning:', error);
+      if (onError) onError(error);
     }
   );
 }

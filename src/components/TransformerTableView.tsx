@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { downloadCsvFile } from '../services/googleSheetsService';
 import { getGoogleMapsNavUrl, isValidLatLng, formatLatLng } from '../utils/geoUtils';
+import { ConfirmModal } from './ConfirmModal';
 
 interface TransformerTableViewProps {
   transformers: Transformer[];
@@ -53,6 +54,17 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
   const [sortField, setSortField] = useState<keyof Transformer>('peaNo');
   const [sortAsc, setSortAsc] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmModalData, setConfirmModalData] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // Distinct branches for filtering
   const branches = useMemo(() => {
@@ -121,14 +133,19 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
 
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return;
-    if (confirm(`คุณต้องการลบหม้อแปลงที่เลือกจำนวน ${selectedIds.size} รายการหรือไม่?`)) {
-      if (onDeleteMultiple) {
-        onDeleteMultiple(Array.from(selectedIds));
-      } else {
-        selectedIds.forEach(id => onDeleteTransformer(id));
+    setConfirmModalData({
+      isOpen: true,
+      title: 'ยืนยันลบหม้อแปลงที่เลือก',
+      message: `คุณต้องการลบหม้อแปลงที่เลือกจำนวน ${selectedIds.size} รายการออกจากผังใช่หรือไม่?`,
+      onConfirm: () => {
+        if (onDeleteMultiple) {
+          onDeleteMultiple(Array.from(selectedIds));
+        } else {
+          selectedIds.forEach(id => onDeleteTransformer(id));
+        }
+        setSelectedIds(new Set());
       }
-      setSelectedIds(new Set());
-    }
+    });
   };
 
   const handleExportSelected = () => {
@@ -223,14 +240,19 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
           {!isReadOnly && transformers.length > 0 && (
             <button
               onClick={() => {
-                if (confirm(`คุณต้องการลบหม้อแปลงทั้งหมดในหน้านี้ (${transformers.length} รายการ) ใช่หรือไม่?`)) {
-                  if (onDeleteMultiple) {
-                    onDeleteMultiple(transformers.map(t => t.id));
-                  } else {
-                    transformers.forEach(t => onDeleteTransformer(t.id));
+                setConfirmModalData({
+                  isOpen: true,
+                  title: 'ยืนยันลบหม้อแปลงทั้งหมดในหน้านี้',
+                  message: `คุณต้องการลบหม้อแปลงทั้งหมดในหน้านี้ (${transformers.length} เครื่อง) ใช่หรือไม่?`,
+                  onConfirm: () => {
+                    if (onDeleteMultiple) {
+                      onDeleteMultiple(transformers.map(t => t.id));
+                    } else {
+                      transformers.forEach(t => onDeleteTransformer(t.id));
+                    }
+                    setSelectedIds(new Set());
                   }
-                  setSelectedIds(new Set());
-                }
+                });
               }}
               className="px-3 py-2 text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
             >
@@ -456,12 +478,15 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
                             </button>
                             <button
                               onClick={() => {
-                                if (confirm(`คุณต้องการลบหม้อแปลง ${t.peaNo} (${t.name}) หรือไม่?`)) {
-                                  onDeleteTransformer(t.id);
-                                }
+                                setConfirmModalData({
+                                  isOpen: true,
+                                  title: 'ยืนยันลบหม้อแปลง',
+                                  message: `คุณต้องการลบหม้อแปลง PEA ${t.peaNo} (${t.name}) ออกจากผังหรือไม่?`,
+                                  onConfirm: () => onDeleteTransformer(t.id)
+                                });
                               }}
                               title="ลบ (Delete)"
-                              className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                              className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -490,6 +515,17 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* In-App Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={confirmModalData.isOpen}
+        title={confirmModalData.title}
+        message={confirmModalData.message}
+        confirmText="ยืนยันการลบ"
+        confirmVariant="danger"
+        onConfirm={confirmModalData.onConfirm}
+        onClose={() => setConfirmModalData(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

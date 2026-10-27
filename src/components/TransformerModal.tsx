@@ -68,8 +68,10 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
   const [isLocating, setIsLocating] = useState(false);
   const [gpsMessage, setGpsMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   useEffect(() => {
+    setIsConfirmingDelete(false);
     if (transformer) {
       setFormData(transformer);
       if (transformer.latitude && transformer.longitude) {
@@ -931,19 +933,37 @@ export const TransformerModal: React.FC<TransformerModalProps> = ({
           {/* Actions Footer */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800">
             {transformer && onDelete ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm(`คุณต้องการลบหม้อแปลง ${transformer.peaNo} (${transformer.name}) หรือไม่?`)) {
-                    onDelete(transformer.id);
-                    onClose();
-                  }
-                }}
-                className="px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors flex items-center gap-1.5"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>ลบหม้อแปลง</span>
-              </button>
+              !isConfirmingDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmingDelete(true)}
+                  className="px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer border border-red-200 dark:border-red-900/40"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>ลบหม้อแปลง</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 animate-in fade-in duration-150">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDelete(transformer.id);
+                      onClose();
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 active:scale-95 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>ยืนยันลบหม้อแปลงนี้</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfirmingDelete(false)}
+                    className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              )
             ) : (
               <div></div>
             )}
