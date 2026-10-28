@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { DiagramSheet, Transformer } from '../types';
 import { FANG_PRESET_SHEETS, scanLocalStorageForBackups } from '../data/fangSubstationPresetData';
-import { parseCsvToTransformers } from '../services/googleSheetsService';
+import { parseCsvToTransformers, readCsvFileWithEncoding } from '../services/googleSheetsService';
 import { saveSheetsToCloudFirestore } from '../services/firebaseDbService';
 
 interface DataRecoveryModalProps {
@@ -192,42 +192,40 @@ export const DataRecoveryModal: React.FC<DataRecoveryModalProps> = ({
   };
 
   // Option 3: Upload CSV file to restore
-  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const text = event.target?.result as string;
-        const parsed = parseCsvToTransformers(text);
-        if (parsed.length > 0) {
-          // Distribute or assign to current sheet
-          const updatedSheets = currentSheets.map((s, idx) => {
-            if (idx === 0) {
-              return {
-                ...s,
-                transformers: parsed,
-                updatedAt: new Date().toISOString()
-              };
-            }
-            return s;
-          });
+    try {
+      const text = await readCsvFileWithEncoding(file);
+      const parsed = parseCsvToTransformers(text);
+      if (parsed.length > 0) {
+        // Distribute or assign to current sheet
+        const updatedSheets = currentSheets.map((s, idx) => {
+          if (idx === 0) {
+            return {
+              ...s,
+              transformers: parsed,
+              updatedAt: new Date().toISOString()
+            };
+          }
+          return s;
+        });
 
-          onRestoreSheets(updatedSheets);
-          try {
-            await saveSheetsToCloudFirestore(updatedSheets);
-          } catch {}
-          showToast(`นำเข้าหม้อแปลงสำเร็จ ${parsed.length} รายการจากไฟล์ ${file.name}`, 'success');
-          onClose();
-        } else {
-          showToast('ไม่พบข้อมูลหม้อแปลงในไฟล์ CSV', 'error');
-        }
-      } catch {
-        showToast('เกิดข้อผิดพลาดในการอ่านไฟล์ CSV', 'error');
+        onRestoreSheets(updatedSheets);
+        try {
+          await saveSheetsToCloudFirestore(updatedSheets);
+        } catch {}
+        showToast(`นำเข้าหม้อแปลงสำเร็จ ${parsed.length} รายการจากไฟล์ ${file.name} (ตรวจจับฟอนต์ไทยและจับคู่คอลัมน์อัตโนมัติ)`, 'success');
+        onClose();
+      } else {
+        showToast('ไม่พบข้อมูลหม้อแปลงในไฟล์ CSV กรุณาตรวจสอบข้อมูลหรือคอลัมน์', 'error');
       }
-    };
-    reader.readAsText(file, 'utf-8');
+    } catch {
+      showToast('เกิดข้อผิดพลาดในการอ่านไฟล์ CSV', 'error');
+    } finally {
+      e.target.value = '';
+    }
   };
 
   // Option 4: Clear all transformers across all sheets

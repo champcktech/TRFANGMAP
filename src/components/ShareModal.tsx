@@ -191,9 +191,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const [importError, setImportError] = useState<string | null>(null);
+
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setImportError(null);
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
@@ -206,10 +209,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             onClose();
           }
         } else {
-          alert('รูปแบบไฟล์ JSON ไม่ถูกต้อง หรือไม่พบข้อมูลหน้าผัง');
+          setImportError('รูปแบบไฟล์ JSON ไม่ถูกต้อง หรือไม่พบข้อมูลหน้าผัง');
         }
-      } catch (err) {
-        alert('เกิดข้อผิดพลาดในการอ่านไฟล์ JSON');
+      } catch {
+        setImportError('เกิดข้อผิดพลาดในการอ่านไฟล์ JSON');
+      } finally {
+        e.target.value = '';
       }
     };
     reader.readAsText(file);
@@ -472,6 +477,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 />
               </label>
             </div>
+            {importError && (
+              <p className="text-[11px] text-red-500 font-medium mt-1 text-center">{importError}</p>
+            )}
           </div>
         </div>
 

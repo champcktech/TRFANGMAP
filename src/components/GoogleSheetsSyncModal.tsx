@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { Transformer, GoogleSheetConfig, DiagramSheet } from '../types';
 import { 
   downloadCsvFile, 
-  parseCsvToTransformers
+  parseCsvToTransformers,
+  readCsvFileWithEncoding
 } from '../services/googleSheetsService';
 import {
   saveSheetsToCloudFirestore,
@@ -73,26 +74,31 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const parsed = parseCsvToTransformers(text);
-        if (parsed.length > 0) {
-          onUpdateTransformers(parsed);
-          setStatusMessage({ type: 'success', text: `นำเข้าข้อมูลสำเร็จ ${parsed.length} รายการจากไฟล์ ${file.name}` });
-        } else {
-          setStatusMessage({ type: 'error', text: 'ไม่พบข้อมูลที่ถูกต้องในไฟล์ CSV' });
-        }
-      } catch (err: any) {
-        setStatusMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการอ่านไฟล์ CSV' });
+    try {
+      const text = await readCsvFileWithEncoding(file);
+      const parsed = parseCsvToTransformers(text);
+      if (parsed.length > 0) {
+        onUpdateTransformers(parsed);
+        setStatusMessage({
+          type: 'success',
+          text: `นำเข้าข้อมูลสำเร็จ ${parsed.length} รายการจากไฟล์ ${file.name} (ตรวจจับฟอนต์ไทยและจับคู่คอลัมน์อัตโนมัติ)`
+        });
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: 'ไม่พบข้อมูลที่ถูกต้องในไฟล์ CSV กรุณาตรวจสอบว่ามีข้อมูลหม้อแปลงหรือคอลัมน์ เช่น รหัส PEA, ชื่อ, หรือ ขนาด kVA'
+        });
       }
-    };
-    reader.readAsText(file, 'utf-8');
+    } catch (err: any) {
+      console.error('CSV import error:', err);
+      setStatusMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการอ่านไฟล์ CSV: ' + (err?.message || '') });
+    } finally {
+      e.target.value = '';
+    }
   };
 
   // --- Shared Cloud Firestore Database Handlers (No Login Required) ---
