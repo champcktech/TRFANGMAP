@@ -3761,7 +3761,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             // Compute background badge dimensions to ensure text never clashes with symbols or wires
             const nameLen = (t.name || '').length;
             const peaLen = (t.peaNo || '').length;
-            const kvaLen = `${t.kva} kVA`.length;
+            const kvaLen = `${t.kva}`.length;
             const maxChars = Math.max(nameLen, peaLen, kvaLen, 6);
             const badgeW = Math.max(76, maxChars * 8.5 + 24);
             const badgeH = 50;
@@ -3990,7 +3990,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     />
                   )}
 
-                  {/* kVA Rating with unit & color */}
+                  {/* Transformer Capacity Rating (Number only without kVA unit) */}
                   <text
                     x="0"
                     y="3"
@@ -4006,7 +4006,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                       strokeLinejoin: 'round'
                     }}
                   >
-                    {t.kva} kVA
+                    {t.kva}
                   </text>
 
                   {/* PEA Number */}
