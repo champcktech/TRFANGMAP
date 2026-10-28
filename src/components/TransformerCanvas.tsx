@@ -229,6 +229,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   const multiDraggingRef = useRef(multiDragging);
   multiDraggingRef.current = multiDragging;
 
+  // Transformer quick delete confirmation state
+  const [confirmDeleteTransformerId, setConfirmDeleteTransformerId] = useState<string | null>(null);
+
   // Marquee Selection Box (Rubber-band selection)
   const [marqueeBox, setMarqueeBox] = useState<{
     startX: number;
@@ -466,6 +469,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         pathIds: selectedPathId ? [selectedPathId] : []
       });
     }
+    setConfirmDeleteTransformerId(null);
   }, [selectedId, selectedSwitchId, selectedAnnotationId, selectedPathId]);
 
   const totalSelectedCount = useMemo(() => {
@@ -3483,7 +3487,13 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
                 {/* Quick On-Canvas Direction Switcher for Selected Landmark/Annotation */}
                 {isSelected && !isBeingDragged && !isReadOnly && onUpdateAnnotation && (
-                  <g transform={`translate(0, ${hitY - 26})`} className="pointer-events-auto">
+                  <g
+                    transform={`translate(0, ${hitY - 26})`}
+                    className="pointer-events-auto select-none"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                  >
                     <rect
                       x="-86"
                       y="-11"
@@ -3506,6 +3516,9 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                         <g
                           key={b.id}
                           className="cursor-pointer hover:opacity-80"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onTouchStart={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
                             const original = annotations.find(orig => orig.id === label.id) || label;
@@ -4050,110 +4063,311 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
                 {/* Quick actions popup when selected */}
                 {isSelected && !isBeingDragged && (
-                  <g transform={`translate(0, ${quickActionY})`} className="pointer-events-auto">
+                  <g
+                    transform={`translate(0, ${quickActionY})`}
+                    className="pointer-events-auto select-none"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                    }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
                     {isValidLatLng(t.latitude, t.longitude) ? (
                       <>
+                        {/* Background pill */}
                         <rect
-                          x={isReadOnly ? "-36" : "-64"}
-                          y="-12"
-                          width={isReadOnly ? "72" : "128"}
-                          height="24"
-                          rx="12"
+                          x={isReadOnly ? "-36" : (confirmDeleteTransformerId === t.id ? "-65" : "-85")}
+                          y="-14"
+                          width={isReadOnly ? "72" : (confirmDeleteTransformerId === t.id ? "130" : "170")}
+                          height="28"
+                          rx="14"
                           fill="#0f172a"
-                          fillOpacity="0.92"
-                          stroke="#3b82f6"
-                          strokeWidth="1"
+                          fillOpacity="0.96"
+                          stroke={confirmDeleteTransformerId === t.id ? "#ef4444" : "#3b82f6"}
+                          strokeWidth="1.2"
                         />
-                        <text
-                          x={isReadOnly ? "0" : "-40"}
-                          y="4"
-                          fill="#60a5fa"
-                          fontSize="10"
-                          fontWeight="bold"
-                          textAnchor={isReadOnly ? "middle" : "start"}
-                          className="cursor-pointer hover:underline"
+
+                        {/* 📍นำทาง button */}
+                        <g
+                          className="cursor-pointer"
                           onClick={(e) => {
                             e.stopPropagation();
                             window.open(getGoogleMapsNavUrl(t.latitude!, t.longitude!), '_blank');
                           }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onTouchStart={(e) => e.stopPropagation()}
                         >
-                          📍นำทาง
-                        </text>
+                          <rect
+                            x={isReadOnly ? "-32" : "-79"}
+                            y="-10"
+                            width={isReadOnly ? "64" : "50"}
+                            height="20"
+                            rx="8"
+                            fill="#1e293b"
+                          />
+                          <text
+                            x={isReadOnly ? "0" : "-54"}
+                            y="4"
+                            fill="#38bdf8"
+                            fontSize="10"
+                            fontWeight="bold"
+                            textAnchor="middle"
+                            pointerEvents="none"
+                          >
+                            📍นำทาง
+                          </text>
+                        </g>
+
                         {!isReadOnly && (
+                          confirmDeleteTransformerId === t.id ? (
+                            <g
+                              className="cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteTransformerId(null);
+                                onDeleteTransformer(t.id);
+                              }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onTouchStart={(e) => e.stopPropagation()}
+                            >
+                              <rect
+                                x="-24"
+                                y="-10"
+                                width="84"
+                                height="20"
+                                rx="8"
+                                fill="#dc2626"
+                              />
+                              <text
+                                x="18"
+                                y="4"
+                                fill="#ffffff"
+                                fontSize="10"
+                                fontWeight="bold"
+                                textAnchor="middle"
+                                pointerEvents="none"
+                              >
+                                ยืนยันลบ?
+                              </text>
+                            </g>
+                          ) : (
+                            <>
+                              {/* แก้ไข button */}
+                              <g
+                                className="cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const original = transformers.find(orig => orig.id === t.id) || t;
+                                  onEditTransformer(original);
+                                }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                touchAction="none"
+                                onTouchStart={(e) => e.stopPropagation()}
+                              >
+                                <rect
+                                  x="-24"
+                                  y="-10"
+                                  width="48"
+                                  height="20"
+                                  rx="8"
+                                  fill="#1e293b"
+                                  stroke="#38bdf8"
+                                  strokeWidth="0.8"
+                                />
+                                <text
+                                  x="0"
+                                  y="4"
+                                  fill="#38bdf8"
+                                  fontSize="10"
+                                  fontWeight="bold"
+                                  textAnchor="middle"
+                                  pointerEvents="none"
+                                >
+                                  แก้ไข
+                                </text>
+                              </g>
+
+                              {/* ลบ button */}
+                              <g
+                                className="cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteTransformerId(t.id);
+                                }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onTouchStart={(e) => e.stopPropagation()}
+                              >
+                                <rect
+                                  x="29"
+                                  y="-10"
+                                  width="50"
+                                  height="20"
+                                  rx="8"
+                                  fill="#1e293b"
+                                  stroke="#f87171"
+                                  strokeWidth="0.8"
+                                />
+                                <text
+                                  x="54"
+                                  y="4"
+                                  fill="#f87171"
+                                  fontSize="10"
+                                  fontWeight="bold"
+                                  textAnchor="middle"
+                                  pointerEvents="none"
+                                >
+                                  ลบ
+                                </text>
+                              </g>
+                            </>
+                          )
+                        )}
+                      </>
+                    ) : (
+                      !isReadOnly && (
+                        confirmDeleteTransformerId === t.id ? (
                           <>
-                            <text
-                              x="0"
-                              y="4"
-                              fill="#ffffff"
-                              fontSize="10"
-                              fontWeight="bold"
+                            <rect
+                              x="-60"
+                              y="-14"
+                              width="120"
+                              height="28"
+                              rx="14"
+                              fill="#0f172a"
+                              fillOpacity="0.96"
+                              stroke="#ef4444"
+                              strokeWidth="1.2"
+                            />
+                            <g
+                              className="cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteTransformerId(null);
+                                onDeleteTransformer(t.id);
+                              }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onTouchStart={(e) => e.stopPropagation()}
+                            >
+                              <rect
+                                x="-56"
+                                y="-10"
+                                width="112"
+                                height="20"
+                                rx="8"
+                                fill="#dc2626"
+                              />
+                              <text
+                                x="0"
+                                y="4"
+                                fill="#ffffff"
+                                fontSize="10"
+                                fontWeight="bold"
+                                textAnchor="middle"
+                                pointerEvents="none"
+                              >
+                                ยืนยันลบหม้อแปลง?
+                              </text>
+                            </g>
+                          </>
+                        ) : (
+                          <>
+                            <rect
+                              x="-54"
+                              y="-14"
+                              width="108"
+                              height="28"
+                              rx="14"
+                              fill="#0f172a"
+                              fillOpacity="0.96"
+                              stroke="#334155"
+                              strokeWidth="1.2"
+                            />
+
+                            {/* แก้ไข button */}
+                            <g
                               className="cursor-pointer"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const original = transformers.find(orig => orig.id === t.id) || t;
                                 onEditTransformer(original);
                               }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onTouchStart={(e) => e.stopPropagation()}
                             >
-                              แก้ไข
-                            </text>
-                            <text
-                              x="38"
-                              y="4"
-                              fill="#f87171"
-                              fontSize="10"
-                              fontWeight="bold"
+                              <rect
+                                x="-49"
+                                y="-10"
+                                width="48"
+                                height="20"
+                                rx="8"
+                                fill="#1e293b"
+                                stroke="#38bdf8"
+                                strokeWidth="0.8"
+                              />
+                              <text
+                                x="-25"
+                                y="4"
+                                fill="#38bdf8"
+                                fontSize="10"
+                                fontWeight="bold"
+                                textAnchor="middle"
+                                pointerEvents="none"
+                              >
+                                แก้ไข
+                              </text>
+                            </g>
+
+                            {/* ลบ button */}
+                            <g
                               className="cursor-pointer"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onDeleteTransformer(t.id);
+                                setConfirmDeleteTransformerId(t.id);
                               }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onTouchStart={(e) => e.stopPropagation()}
                             >
-                              ลบ
-                            </text>
+                              <rect
+                                x="4"
+                                y="-10"
+                                width="46"
+                                height="20"
+                                rx="8"
+                                fill="#1e293b"
+                                stroke="#f87171"
+                                strokeWidth="0.8"
+                              />
+                              <text
+                                x="27"
+                                y="4"
+                                fill="#f87171"
+                                fontSize="10"
+                                fontWeight="bold"
+                                textAnchor="middle"
+                                pointerEvents="none"
+                              >
+                                ลบ
+                              </text>
+                            </g>
                           </>
-                        )}
-                      </>
-                    ) : (
-                      !isReadOnly && (
-                        <>
-                          <rect
-                            x="-38"
-                            y="-12"
-                            width="76"
-                            height="24"
-                            rx="12"
-                            fill="#0f172a"
-                            fillOpacity="0.9"
-                          />
-                          <text
-                            x="-18"
-                            y="4"
-                            fill="#ffffff"
-                            fontSize="10"
-                            fontWeight="bold"
-                            className="cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEditTransformer(t);
-                            }}
-                          >
-                            แก้ไข
-                          </text>
-                          <text
-                            x="14"
-                            y="4"
-                            fill="#f87171"
-                            fontSize="10"
-                            fontWeight="bold"
-                            className="cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteTransformer(t.id);
-                            }}
-                          >
-                            ลบ
-                          </text>
-                        </>
+                        )
                       )
                     )}
                   </g>
