@@ -131,14 +131,16 @@ export const DraftApprovalModal: React.FC<DraftApprovalModalProps> = ({
     }
   };
 
+  const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
+
   const handleDelete = async (draftId: string) => {
     if (!isAdmin) return;
-    if (!confirm('คุณต้องการลบรายการแบบร่างนี้อย่างถาวรใช่หรือไม่?')) return;
 
     setProcessingId(draftId);
     try {
       await deleteTransformerDraft(draftId);
       showToast('ลบรายการแบบร่างเรียบร้อยแล้ว', 'info');
+      setConfirmDeleteDraftId(null);
       if (selectedDraftId === draftId) setSelectedDraftId(null);
     } catch (err: any) {
       console.error('Delete draft failed:', err);
@@ -542,14 +544,35 @@ export const DraftApprovalModal: React.FC<DraftApprovalModalProps> = ({
                     )}
 
                     {isAdmin && (
-                      <button
-                        onClick={() => handleDelete(activeDraft.id)}
-                        disabled={processingId === activeDraft.id}
-                        title="ลบรายการแบบร่างนี้"
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      confirmDeleteDraftId !== activeDraft.id ? (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteDraftId(activeDraft.id)}
+                          disabled={processingId === activeDraft.id}
+                          title="ลบรายการแบบร่างนี้"
+                          className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1 animate-in fade-in duration-150">
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(activeDraft.id)}
+                            disabled={processingId === activeDraft.id}
+                            className="px-2.5 py-1 text-[11px] font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg cursor-pointer active:scale-95 shadow-sm"
+                          >
+                            ยืนยันลบ
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteDraftId(null)}
+                            className="px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100 rounded-lg cursor-pointer"
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      )
                     )}
                   </div>
 

@@ -52,14 +52,16 @@ import {
   approveTransformerDraft
 } from './services/firebaseDbService';
 
-const STORAGE_KEY_SHEETS = 'pea_sld_all_sheets_v7_clean';
-const STORAGE_KEY_ACTIVE_SHEET_ID = 'pea_sld_active_sheet_id_v7';
+const STORAGE_KEY_SHEETS = 'pea_sld_all_sheets_v8_cloud_authoritative';
+const STORAGE_KEY_ACTIVE_SHEET_ID = 'pea_sld_active_sheet_id_v8';
 const STORAGE_KEY_SHEET_CONFIG = 'pea_sld_cloud_config_v2';
 const STORAGE_KEY_THEME = 'pea_sld_theme_v1';
 const STORAGE_KEY_CLEARED_CLOUD_TFS = 'pea_sld_cleared_all_transformers_v1';
 
 // Legacy keys to clean up
 const LEGACY_STORAGE_KEYS = [
+  'pea_sld_all_sheets_v7_clean',
+  'pea_sld_active_sheet_id_v7',
   'pea_sld_all_sheets_v6',
   'pea_sld_sheet_config_v1',
   'pea_sld_transformers_v1',
@@ -201,7 +203,12 @@ function getInitialSheets(): DiagramSheet[] {
     console.error('Failed to parse URL share payload', e);
   }
 
-  // 2. Load from v7 localStorage
+  // Clean up old legacy keys
+  try {
+    LEGACY_STORAGE_KEYS.forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+
+  // 2. Load from v8 localStorage
   if (!loadedSheets) {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_SHEETS);
@@ -449,20 +456,43 @@ export default function App() {
   // Toast notifications
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
+  // In-App Confirm Modal State (replaces window.confirm which is blocked in iframes)
+  const [appConfirmModal, setAppConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    confirmVariant?: 'danger' | 'warning' | 'primary';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
   const showToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  const handleSignOut = useCallback(async () => {
-    if (confirm('คุณต้องการออกจากระบบหรือไม่?')) {
-      try {
-        await signOutFromCloud();
-        showToast('ออกจากระบบเรียบร้อยแล้ว', 'info');
-      } catch (err: any) {
-        showToast('เกิดข้อผิดพลาดในการออกจากระบบ', 'error');
+  const handleSignOut = useCallback(() => {
+    setAppConfirmModal({
+      isOpen: true,
+      title: 'ออกจากระบบ',
+      message: 'คุณต้องการออกจากระบบการจัดการผังหม้อแปลงหรือไม่?',
+      confirmText: 'ออกจากระบบ',
+      confirmVariant: 'warning',
+      onConfirm: async () => {
+        try {
+          await signOutFromCloud();
+          showToast('ออกจากระบบเรียบร้อยแล้ว', 'info');
+        } catch (err: any) {
+          showToast('เกิดข้อผิดพลาดในการออกจากระบบ', 'error');
+        }
       }
-    }
+    });
   }, [showToast]);
 
   const handleToggleReadOnly = useCallback(() => {
@@ -527,10 +557,7 @@ export default function App() {
     showToast(`คืนค่าฐานข้อมูลเต็ม กฟส.ฝาง สำเร็จ (${total} เครื่อง ครบ 6 ผัง)`, 'success');
   }, [sheets, showToast]);
 
-  const handleClearAllTransformers = useCallback(async () => {
-    if (!window.confirm('คุณต้องการลบหม้อแปลงทั้งหมดในทุกหน้าผังวงจรหรือไม่? (ผังสายส่งและสวิตช์จะยังคงอยู่)')) {
-      return;
-    }
+  const executeClearAllTransformers = useCallback(async () => {
     const emptySheets = sheets.map(s => ({
       ...s,
       transformers: [],
@@ -549,6 +576,17 @@ export default function App() {
       showToast('ลบหม้อแปลงในเครื่องเรียบร้อยแล้ว', 'info');
     }
   }, [sheets, showToast]);
+
+  const handleClearAllTransformers = useCallback(() => {
+    setAppConfirmModal({
+      isOpen: true,
+      title: 'ยืนยันการลบหม้อแปลงทั้งหมด',
+      message: 'คุณต้องการลบหม้อแปลงทั้งหมดในทุกหน้าผังวงจรให้เหลือ 0 เครื่อง ใช่หรือไม่?\n(ผังสายส่ง สวิตช์ และป้ายชื่อสถานที่สำคัญจะยังคงอยู่ครบถ้วน)',
+      confirmText: 'ยืนยันลบทั้งหมด (0 เครื่อง)',
+      confirmVariant: 'danger',
+      onConfirm: executeClearAllTransformers
+    });
+  }, [executeClearAllTransformers]);
 
   useEffect(() => {
     try {
@@ -870,17 +908,24 @@ export default function App() {
     }
 
     const target = sheets.find(s => s.id === sheetId);
-    if (confirm(`คุณต้องการลบหน้า "${target?.sheetNo} ${target?.title}" ใช่หรือไม่?`)) {
-      hasUserEditedRef.current = true;
-      setSheets(prev => {
-        const remaining = prev.filter(s => s.id !== sheetId);
-        if (activeSheetId === sheetId) {
-          setActiveSheetId(remaining[0].id);
-        }
-        return remaining;
-      });
-      showToast(`ลบหน้า ${target?.sheetNo} เรียบร้อยแล้ว`, 'info');
-    }
+    setAppConfirmModal({
+      isOpen: true,
+      title: 'ยืนยันการลบหน้าผังวงจร',
+      message: `คุณต้องการลบหน้าผัง "${target?.sheetNo} ${target?.title}" ใช่หรือไม่?`,
+      confirmText: 'ลบหน้านี้',
+      confirmVariant: 'danger',
+      onConfirm: () => {
+        hasUserEditedRef.current = true;
+        setSheets(prev => {
+          const remaining = prev.filter(s => s.id !== sheetId);
+          if (activeSheetId === sheetId) {
+            setActiveSheetId(remaining[0].id);
+          }
+          return remaining;
+        });
+        showToast(`ลบหน้า ${target?.sheetNo} เรียบร้อยแล้ว`, 'info');
+      }
+    });
   };
 
   // --- Actions ---
@@ -1346,17 +1391,24 @@ export default function App() {
   };
 
   const handleResetToDefault = () => {
-    if (confirm('คุณต้องการรีเซ็ตข้อมูลผังหน้าปัจจุบัน และล้างหม้อแปลงในหน้านี้ออกทั้งหมดหรือไม่?')) {
-      setTransformers([]);
-      setSwitches(INITIAL_SWITCHES);
-      setAnnotations(INITIAL_ANNOTATIONS);
-      setFeederPaths(INITIAL_FEEDER_PATHS);
-      setSelectedTransformer(null);
-      setSelectedPath(null);
-      setSelectedSwitch(null);
-      setSelectedAnnotation(null);
-      showToast('รีเซ็ตผังวงจรและล้างข้อมูลหม้อแปลงในหน้านี้เรียบร้อยแล้ว');
-    }
+    setAppConfirmModal({
+      isOpen: true,
+      title: 'รีเซ็ตผังหน้าปัจจุบัน',
+      message: 'คุณต้องการรีเซ็ตข้อมูลผังหน้าปัจจุบัน และล้างหม้อแปลงในหน้านี้ออกทั้งหมดหรือไม่?',
+      confirmText: 'รีเซ็ตหน้านี้',
+      confirmVariant: 'danger',
+      onConfirm: () => {
+        setTransformers([]);
+        setSwitches(INITIAL_SWITCHES);
+        setAnnotations(INITIAL_ANNOTATIONS);
+        setFeederPaths(INITIAL_FEEDER_PATHS);
+        setSelectedTransformer(null);
+        setSelectedPath(null);
+        setSelectedSwitch(null);
+        setSelectedAnnotation(null);
+        showToast('รีเซ็ตผังวงจรและล้างข้อมูลหม้อแปลงในหน้านี้เรียบร้อยแล้ว');
+      }
+    });
   };
 
   // Sync active sheet when URL hash or params change
@@ -1902,6 +1954,18 @@ export default function App() {
           }
         }}
         showToast={showToast}
+      />
+
+      {/* Global In-App Confirmation Modal */}
+      <ConfirmModal
+        isOpen={appConfirmModal.isOpen}
+        title={appConfirmModal.title}
+        message={appConfirmModal.message}
+        confirmText={appConfirmModal.confirmText}
+        cancelText={appConfirmModal.cancelText}
+        confirmVariant={appConfirmModal.confirmVariant}
+        onConfirm={appConfirmModal.onConfirm}
+        onClose={() => setAppConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
     </div>
   );
