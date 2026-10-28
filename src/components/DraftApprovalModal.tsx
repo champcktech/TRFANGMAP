@@ -54,6 +54,7 @@ export const DraftApprovalModal: React.FC<DraftApprovalModalProps> = ({
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState('');
   const [isRejectingId, setIsRejectingId] = useState<string | null>(null);
+  const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
 
   const isAdmin = !!currentUser;
 
@@ -130,8 +131,6 @@ export const DraftApprovalModal: React.FC<DraftApprovalModalProps> = ({
       setProcessingId(null);
     }
   };
-
-  const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
 
   const handleDelete = async (draftId: string) => {
     if (!isAdmin) return;

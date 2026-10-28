@@ -54,6 +54,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   const [activeTab, setActiveTab] = useState<'cloud' | 'csv'>('cloud');
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
   const allSheetsTransformers = useMemo(() => {
     if (!allSheets || allSheets.length === 0) return transformers;
@@ -158,8 +159,6 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
       setIsLoading(false);
     }
   };
-
-  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
   const handleDeleteAllTransformers = async () => {
     setIsLoading(true);

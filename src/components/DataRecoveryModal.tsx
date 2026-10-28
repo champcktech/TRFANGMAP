@@ -35,6 +35,7 @@ export const DataRecoveryModal: React.FC<DataRecoveryModalProps> = ({
   const [localBackups, setLocalBackups] = useState<{ key: string; sheetCount: number; transformerCount: number; data: any }[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -42,6 +43,7 @@ export const DataRecoveryModal: React.FC<DataRecoveryModalProps> = ({
       const found = scanLocalStorageForBackups();
       setLocalBackups(found);
       setIsScanning(false);
+      setConfirmClearAll(false);
     }
   }, [isOpen]);
 
@@ -227,8 +229,6 @@ export const DataRecoveryModal: React.FC<DataRecoveryModalProps> = ({
     };
     reader.readAsText(file, 'utf-8');
   };
-
-  const [confirmClearAll, setConfirmClearAll] = useState(false);
 
   // Option 4: Clear all transformers across all sheets
   const handleExecuteClearAll = async () => {
