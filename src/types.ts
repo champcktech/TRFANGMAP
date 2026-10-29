@@ -83,7 +83,7 @@ export interface GoogleSheetConfig {
   autoSync?: boolean;
   syncIntervalMin?: number;
   lastSyncedAt?: string;
-  syncStatus?: 'idle' | 'syncing' | 'success' | 'error';
+  syncStatus?: 'idle' | 'syncing' | 'success' | 'error' | 'cached';
   errorMessage?: string;
 }
 

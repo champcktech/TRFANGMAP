@@ -28,7 +28,11 @@ import {
   ArrowRight,
   FileText,
   ClipboardList,
-  RotateCcw
+  RotateCcw,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Cloud
 } from 'lucide-react';
 import { GoogleSheetConfig, DiagramSheet, Transformer, AnnotationLabel } from '../types';
 
@@ -72,6 +76,10 @@ interface NavbarProps {
   onOpenDraftApprovalModal?: () => void;
   onOpenProposeDraft?: () => void;
   onOpenRecoveryModal?: () => void;
+  isSavingToCloud?: boolean;
+  lastSavedCloudTime?: string;
+  cloudSyncError?: string | null;
+  onManualSaveToCloud?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -109,7 +117,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   pendingDraftsCount = 0,
   onOpenDraftApprovalModal,
   onOpenProposeDraft,
-  onOpenRecoveryModal
+  onOpenRecoveryModal,
+  isSavingToCloud = false,
+  lastSavedCloudTime = '',
+  cloudSyncError = null,
+  onManualSaveToCloud
 }) => {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
@@ -747,24 +759,67 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
-        {/* Cloud Database Button (Editor only) */}
+        {/* Firebase Save Status & Force Save Button */}
         {!isReadOnly && (
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-1">
+            <button
+              id="btn-cloud-sync-status"
+              onClick={onManualSaveToCloud || onOpenGoogleSheetsModal}
+              disabled={isSavingToCloud}
+              title={
+                isSavingToCloud
+                  ? 'กำลังบันทึกข้อมูลผังและหม้อแปลงขึ้น Firebase Firestore...'
+                  : cloudSyncError
+                  ? `สถานะ: ${cloudSyncError}\n(คลิกเพื่อลองบันทึกใหม่)`
+                  : `✅ ข้อมูลหม้อแปลงถูกบันทึกลง Firebase เรียบร้อยแล้ว\nบันทึกสำเร็จล่าสุด: ${lastSavedCloudTime || sheetConfig.lastSyncedAt || 'เมื่อสักครู่'}\n(คลิกปุ่มนี้เพื่อสั่งบันทึกลง Firebase ซ้ำทันที)`
+              }
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all border cursor-pointer shadow-2xs active:scale-95 select-none ${
+                isSavingToCloud
+                  ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border-amber-400 dark:border-amber-600 animate-pulse'
+                  : cloudSyncError
+                  ? 'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 hover:border-emerald-400'
+              }`}
+            >
+              {isSavingToCloud ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                  <span className="hidden sm:inline">กำลังบันทึก Firebase...</span>
+                  <span className="sm:hidden">กำลังบันทึก...</span>
+                </>
+              ) : sheetConfig.syncStatus === 'cached' || (cloudSyncError && cloudSyncError.includes('โควตา')) ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="hidden md:inline">บันทึกในเครื่องปลอดภัย (โควตา Cloud เต็ม)</span>
+                  <span className="hidden sm:inline md:hidden">ในเครื่องปลอดภัย</span>
+                  <span className="sm:hidden">ในเครื่อง</span>
+                </>
+              ) : cloudSyncError ? (
+                <>
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="hidden sm:inline">บันทึกในเครื่อง (คลิกลองใหม่)</span>
+                  <span className="sm:hidden">ในเครื่อง</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="hidden md:inline">
+                    บันทึก Firebase แล้ว {lastSavedCloudTime || sheetConfig.lastSyncedAt ? `(${lastSavedCloudTime || sheetConfig.lastSyncedAt})` : ''}
+                  </span>
+                  <span className="hidden sm:inline md:hidden">บันทึก Firebase แล้ว</span>
+                  <span className="sm:hidden">บันทึกแล้ว</span>
+                </>
+              )}
+            </button>
+
+            {/* Cloud Database Modal Trigger */}
             <button
               id="btn-google-sheets"
               onClick={onOpenGoogleSheetsModal}
-              title={`ฐานข้อมูลหลัก: Firebase Firestore (เชื่อมต่อสด Real-Time)\nซิงค์ล่าสุด: ${sheetConfig.lastSyncedAt || 'เมื่อสักครู่'}`}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
-                sheetConfig.syncStatus === 'success'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
-                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100'
-              }`}
+              title={`เปิดศูนย์จัดการฐานข้อมูล Firebase / ส่งออก CSV\nบันทึกสำเร็จล่าสุด: ${lastSavedCloudTime || sheetConfig.lastSyncedAt || 'เมื่อสักครู่'}`}
+              className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
             >
               <Database className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span className="hidden sm:inline">Firebase Live</span>
-              {sheetConfig.syncStatus === 'success' && (
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="เชื่อมต่อ Firebase สด"></span>
-              )}
             </button>
           </div>
         )}

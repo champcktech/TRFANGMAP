@@ -48,6 +48,9 @@ import {
   subscribeToCloudSheets,
   signOutFromCloud,
   isQuotaError,
+  isCloudWriteQuotaExhausted,
+  recordQuotaExhausted,
+  resetQuotaExhausted,
   subscribeToTransformerDrafts,
   approveTransformerDraft
 } from './services/firebaseDbService';
@@ -427,6 +430,15 @@ export default function App() {
   const [cloudUser, setCloudUser] = useState<{ uid: string; email?: string | null; displayName?: string | null } | null>(null);
   const [isCloudAutoSync, setIsCloudAutoSync] = useState<boolean>(true);
   const [isCloudInitialLoaded, setIsCloudInitialLoaded] = useState<boolean>(false);
+  const [isSavingToCloud, setIsSavingToCloud] = useState<boolean>(false);
+  const [lastSavedCloudTime, setLastSavedCloudTime] = useState<string>(() => {
+    try {
+      return localStorage.getItem('pea_last_cloud_save_time') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
 
   // Draft Proposals & Approval States
   const [drafts, setDrafts] = useState<TransformerDraft[]>([]);
@@ -521,6 +533,59 @@ export default function App() {
       return next;
     });
   }, [showToast]);
+
+  const handleManualSaveToCloud = useCallback(async () => {
+    if (isSavingToCloud) return;
+    setIsSavingToCloud(true);
+    const sheetsJson = JSON.stringify(sheets);
+    const nowStr = new Date().toLocaleTimeString('th-TH');
+
+    // 1. Always save to LocalStorage and rolling backup first
+    try {
+      localStorage.setItem(STORAGE_KEY_SHEETS, sheetsJson);
+      localStorage.setItem('pea_last_cloud_save_time', nowStr);
+      localStorage.setItem(`pea_sld_backup_${Date.now()}`, sheetsJson);
+    } catch {}
+
+    try {
+      // Force retry if user explicitly clicks the manual save button
+      await saveSheetsToCloudFirestore(sheets, { forceRetry: true });
+      resetQuotaExhausted();
+      setLastSavedCloudTime(nowStr);
+      setCloudSyncError(null);
+      hasUserEditedRef.current = false;
+      lastSavedSheetsJsonRef.current = sheetsJson;
+      setSheetConfig(prev => ({
+        ...prev,
+        lastSyncedAt: nowStr,
+        syncStatus: 'success',
+        errorMessage: undefined
+      }));
+      showToast(`บันทึกข้อมูลผังวงจรลง Firebase สำเร็จแล้ว (${nowStr}) ครบทุกหน้า (${totalAllTransformers} เครื่อง)`, 'success');
+    } catch (err: any) {
+      const isQuota = isQuotaError(err);
+      if (isQuota) {
+        recordQuotaExhausted();
+      }
+      hasUserEditedRef.current = false;
+      lastSavedSheetsJsonRef.current = sheetsJson;
+      setLastSavedCloudTime(nowStr);
+
+      const msg = isQuota 
+        ? 'โควตา Cloud ประจำวันเต็ม ข้อมูลทั้งหมดถูกบันทึกลงในเครื่อง (LocalStorage) อย่างปลอดภัย'
+        : (err?.message || 'ไม่สามารถบันทึกลง Firebase ได้ (บันทึกในเครื่องปลอดภัย)');
+      setCloudSyncError(msg);
+      setSheetConfig(prev => ({
+        ...prev,
+        lastSyncedAt: nowStr,
+        syncStatus: isQuota ? 'cached' : 'error',
+        errorMessage: msg
+      }));
+      showToast(msg, isQuota ? 'info' : 'error');
+    } finally {
+      setIsSavingToCloud(false);
+    }
+  }, [sheets, totalAllTransformers, isSavingToCloud, showToast]);
 
   const handleRestoreFullFangDataset = useCallback(async () => {
     let total = 0;
@@ -678,8 +743,12 @@ export default function App() {
           }));
 
           if (hasLocalKeep) {
-            hasUserEditedRef.current = true;
-            saveSheetsToCloudFirestore(finalSheets).catch(() => {});
+            try {
+              localStorage.setItem(STORAGE_KEY_SHEETS, finalJson);
+            } catch {}
+            if (!isCloudWriteQuotaExhausted()) {
+              saveSheetsToCloudFirestore(finalSheets).catch(() => {});
+            }
           }
         }
       } catch (err: any) {
@@ -737,26 +806,64 @@ export default function App() {
 
     const timer = setTimeout(async () => {
       if (isCloudSyncingRef.current) return;
+
+      // 1. Always guarantee LocalStorage is saved
+      try {
+        localStorage.setItem(STORAGE_KEY_SHEETS, currentJson);
+      } catch {}
+
+      // 2. Check if Firestore write quota is already exhausted: if so, keep local and don't spam backend!
+      if (isCloudWriteQuotaExhausted()) {
+        lastSavedSheetsJsonRef.current = currentJson;
+        hasUserEditedRef.current = false;
+        const nowStr = new Date().toLocaleTimeString('th-TH');
+        setLastSavedCloudTime(nowStr);
+        setCloudSyncError(null);
+        setSheetConfig(prev => ({
+          ...prev,
+          lastSyncedAt: nowStr,
+          syncStatus: 'cached',
+          errorMessage: 'บันทึกในเครื่องปลอดภัย (โควตา Cloud ประจำวันเต็ม)'
+        }));
+        return;
+      }
+
       isCloudSyncingRef.current = true;
+      setIsSavingToCloud(true);
       try {
         await saveSheetsToCloudFirestore(sheets);
         lastSavedSheetsJsonRef.current = currentJson;
         hasUserEditedRef.current = false;
+        const nowStr = new Date().toLocaleTimeString('th-TH');
+        setLastSavedCloudTime(nowStr);
+        setCloudSyncError(null);
+        try {
+          localStorage.setItem('pea_last_cloud_save_time', nowStr);
+        } catch {}
         setSheetConfig(prev => ({
           ...prev,
-          lastSyncedAt: new Date().toLocaleTimeString('th-TH'),
+          lastSyncedAt: nowStr,
           syncStatus: 'success',
           errorMessage: undefined
         }));
       } catch (err: any) {
         console.warn('Auto-save to Cloud Firestore notice:', err);
         const isQuota = isQuotaError(err);
+        if (isQuota) {
+          recordQuotaExhausted();
+        }
+        // Always reset user edited ref and set lastSavedSheetsJsonRef to avoid infinite re-render loops!
+        lastSavedSheetsJsonRef.current = currentJson;
+        hasUserEditedRef.current = false;
+
+        const errorMsg = isQuota
+          ? 'โควตา Cloud ประจำวันเต็ม (ทำงานในโหมดแคชในเครื่อง)'
+          : 'บันทึกลง Cloud ไม่สำเร็จ (ทำงานในโหมดออฟไลน์)';
+        setCloudSyncError(errorMsg);
         setSheetConfig(prev => ({
           ...prev,
-          syncStatus: 'error',
-          errorMessage: isQuota
-            ? 'โควตา Cloud ประจำวันเต็ม (ทำงานในโหมดแคชในเครื่อง)'
-            : 'บันทึกลง Cloud ไม่สำเร็จ (ทำงานในโหมดออฟไลน์)'
+          syncStatus: isQuota ? 'cached' : 'error',
+          errorMessage: errorMsg
         }));
 
         if (isQuota && !quotaExceededToastShownRef.current) {
@@ -765,8 +872,9 @@ export default function App() {
         }
       } finally {
         isCloudSyncingRef.current = false;
+        setIsSavingToCloud(false);
       }
-    }, 600);
+    }, 1500);
 
     return () => clearTimeout(timer);
   }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly, showToast]);
@@ -1528,6 +1636,10 @@ export default function App() {
         onOpenDraftApprovalModal={() => setIsDraftApprovalModalOpen(true)}
         onOpenProposeDraft={() => handleOpenProposeCreateDraft()}
         onOpenRecoveryModal={() => setIsRecoveryModalOpen(true)}
+        isSavingToCloud={isSavingToCloud}
+        lastSavedCloudTime={lastSavedCloudTime}
+        cloudSyncError={cloudSyncError}
+        onManualSaveToCloud={handleManualSaveToCloud}
       />
 
       {/* Transformers Status Banner */}

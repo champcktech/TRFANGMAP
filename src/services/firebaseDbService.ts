@@ -115,7 +115,86 @@ function buildValidatedSheetPayload(sheet: DiagramSheet) {
   };
 }
 
-let lastQuotaExceededWarningTime = 0;
+export const STORAGE_KEY_QUOTA_EXHAUSTED = 'pea_firestore_quota_exhausted_at';
+export const STORAGE_KEY_LOCAL_DRAFTS = 'pea_local_transformer_drafts';
+const QUOTA_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour circuit breaker cooldown
+
+export function isCloudWriteQuotaExhausted(): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_QUOTA_EXHAUSTED);
+    if (!raw) return false;
+    const timestamp = parseInt(raw, 10);
+    if (isNaN(timestamp)) return false;
+    if (Date.now() - timestamp > QUOTA_COOLDOWN_MS) {
+      localStorage.removeItem(STORAGE_KEY_QUOTA_EXHAUSTED);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function recordQuotaExhausted(): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_QUOTA_EXHAUSTED, Date.now().toString());
+  } catch {}
+}
+
+export function resetQuotaExhausted(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY_QUOTA_EXHAUSTED);
+  } catch {}
+}
+
+export function getLocalDraftsFallback(): TransformerDraft[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_DRAFTS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalDraftFallback(draft: TransformerDraft): void {
+  try {
+    const list = getLocalDraftsFallback();
+    const existingIdx = list.findIndex(d => d.id === draft.id);
+    if (existingIdx >= 0) {
+      list[existingIdx] = draft;
+    } else {
+      list.unshift(draft);
+    }
+    localStorage.setItem(STORAGE_KEY_LOCAL_DRAFTS, JSON.stringify(list));
+  } catch {}
+}
+
+function updateLocalDraftStatus(
+  draftId: string, 
+  status: 'approved' | 'rejected', 
+  reviewedBy: string, 
+  reviewNote?: string
+): void {
+  try {
+    const list = getLocalDraftsFallback();
+    const item = list.find(d => d.id === draftId);
+    if (item) {
+      item.status = status;
+      item.reviewedBy = reviewedBy;
+      item.reviewNote = reviewNote;
+      item.reviewedAt = new Date().toISOString();
+      item.updatedAt = new Date().toISOString();
+      localStorage.setItem(STORAGE_KEY_LOCAL_DRAFTS, JSON.stringify(list));
+    }
+  } catch {}
+}
+
+function removeLocalDraftFallback(draftId: string): void {
+  try {
+    const list = getLocalDraftsFallback().filter(d => d.id !== draftId);
+    localStorage.setItem(STORAGE_KEY_LOCAL_DRAFTS, JSON.stringify(list));
+  } catch {}
+}
 
 export function isQuotaError(err: any): boolean {
   const msg = (err?.message || String(err || '')).toLowerCase();
@@ -133,7 +212,7 @@ export function isQuotaError(err: any): boolean {
 
 export function withTimeout<T>(
   promise: Promise<T>, 
-  ms = 6000, 
+  ms = 5000, 
   errorMsg = 'หมดเวลาการเชื่อมต่อฐานข้อมูล Cloud (Timeout)'
 ): Promise<T> {
   return Promise.race([
@@ -147,76 +226,75 @@ export function withTimeout<T>(
 /**
  * Saves all diagram sheets to Firestore under /sheets/{sheetId} in the shared workspace (no login required)
  */
-export async function saveSheetsToCloudFirestore(sheets: DiagramSheet[]): Promise<number> {
-  // If quota was already detected recently (within last 3 minutes), avoid freezing the UI with retries
-  if (Date.now() - lastQuotaExceededWarningTime < 3 * 60 * 1000) {
-    throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบได้บันทึกข้อมูลทั้งหมดลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
+export async function saveSheetsToCloudFirestore(
+  sheets: DiagramSheet[],
+  options?: { forceRetry?: boolean }
+): Promise<number> {
+  // If write quota is already known to be exhausted and user is not manually forcing a retry, bail out early
+  if (!options?.forceRetry && isCloudWriteQuotaExhausted()) {
+    throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบบันทึกข้อมูลทั้งหมดลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
   }
 
   let savedCount = 0;
 
   try {
-    // Process sheets with timeout to prevent hanging when backend is exhausted or throttling
-    const savePromises = sheets.map(async (sheet, i) => {
-      const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${sheet.id}`, i);
-      const sheetPath = `sheets/${docId}`;
+    // 1. Test write with the first sheet first to check connectivity & quota without hammering Firestore
+    const firstSheet = sheets[0];
+    if (firstSheet) {
+      const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${firstSheet.id}`, 0);
       const docRef = doc(db, 'sheets', docId);
-      const baseData = buildValidatedSheetPayload(sheet);
+      const baseData = buildValidatedSheetPayload(firstSheet);
 
-      let exists = false;
-      try {
-        const existingSnap = await withTimeout(getDoc(docRef), 5000);
-        exists = existingSnap.exists();
-      } catch (error) {
-        if (isQuotaError(error)) {
-          lastQuotaExceededWarningTime = Date.now();
-          throw error;
-        }
-      }
-
-      if (exists) {
-        await withTimeout(
-          updateDoc(docRef, {
-            sheetNo: baseData.sheetNo,
-            title: baseData.title,
-            feederCode: baseData.feederCode,
-            substation: baseData.substation,
-            description: baseData.description,
-            transformers: baseData.transformers,
-            switches: baseData.switches,
-            feederPaths: baseData.feederPaths,
-            annotations: baseData.annotations,
-            updatedAt: serverTimestamp()
-          }),
-          6000
-        );
-      } else {
-        await withTimeout(
-          setDoc(docRef, {
+      await withTimeout(
+        setDoc(
+          docRef,
+          {
             ...baseData,
-            createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
-          }),
-          6000
-        );
-      }
-      return true;
-    });
+          },
+          { merge: true }
+        ),
+        5000
+      );
+      savedCount++;
+      // If the write succeeded, clear any previous quota exhausted state
+      resetQuotaExhausted();
+    }
 
-    const results = await Promise.allSettled(savePromises);
-    for (const res of results) {
-      if (res.status === 'fulfilled') {
-        savedCount++;
-      } else {
-        if (isQuotaError(res.reason)) {
-          lastQuotaExceededWarningTime = Date.now();
-          throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบได้บันทึกข้อมูลทั้งหมดลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
+    // 2. Process remaining sheets in parallel
+    if (sheets.length > 1) {
+      const remainingPromises = sheets.slice(1).map(async (sheet, i) => {
+        const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${sheet.id}`, i + 1);
+        const docRef = doc(db, 'sheets', docId);
+        const baseData = buildValidatedSheetPayload(sheet);
+
+        await withTimeout(
+          setDoc(
+            docRef,
+            {
+              ...baseData,
+              updatedAt: serverTimestamp()
+            },
+            { merge: true }
+          ),
+          5000
+        );
+        return true;
+      });
+
+      const results = await Promise.allSettled(remainingPromises);
+      for (const res of results) {
+        if (res.status === 'fulfilled') {
+          savedCount++;
+        } else if (isQuotaError(res.reason)) {
+          recordQuotaExhausted();
+          throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบบันทึกข้อมูลทั้งหมดลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
         }
       }
     }
   } catch (err: any) {
     if (isQuotaError(err)) {
-      lastQuotaExceededWarningTime = Date.now();
+      recordQuotaExhausted();
       throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบได้บันทึกข้อมูลทั้งหมดลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
     }
     throw err;
@@ -258,7 +336,7 @@ export async function fetchSheetsFromCloudFirestore(): Promise<DiagramSheet[]> {
     return result.sort((a, b) => a.sheetNo.localeCompare(b.sheetNo, undefined, { numeric: true }));
   } catch (error) {
     if (isQuotaError(error)) {
-      lastQuotaExceededWarningTime = Date.now();
+      recordQuotaExhausted();
       console.warn('Firestore Quota exceeded on fetch, falling back to local data.');
       return [];
     }
@@ -304,6 +382,9 @@ export function subscribeToCloudSheets(
       onUpdate(loaded);
     },
     (error) => {
+      if (isQuotaError(error)) {
+        recordQuotaExhausted();
+      }
       console.warn('Real-time sheets subscription warning:', error);
       if (onError) onError(error);
     }
@@ -314,11 +395,19 @@ export function subscribeToCloudSheets(
  * Deletes a sheet document from the shared Cloud Firestore workspace
  */
 export async function deleteSheetFromCloudFirestore(sheetId: string): Promise<void> {
+  if (isCloudWriteQuotaExhausted()) {
+    console.warn('Skipping Firestore deleteSheet due to write quota exhaustion');
+    return;
+  }
   const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${sheetId}`, 0);
   const path = `sheets/${docId}`;
   try {
     await deleteDoc(doc(db, 'sheets', docId));
   } catch (error) {
+    if (isQuotaError(error)) {
+      recordQuotaExhausted();
+      return;
+    }
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
@@ -339,35 +428,57 @@ export async function submitTransformerDraft(params: {
   const rand = Math.random().toString(36).substring(2, 9);
   const draftId = `draft-${Date.now()}-${rand}`.replace(/[^a-zA-Z0-9_\-]/g, '-').slice(0, 128);
   const path = `transformer_drafts/${draftId}`;
+  const nowIso = new Date().toISOString();
 
-  const payload: Record<string, any> = {
+  const localDraft: TransformerDraft = {
+    id: draftId,
     sheetId: String(params.sheetId || 'sheet-1').slice(0, 128),
     actionType: params.actionType,
+    targetTransformerId: params.targetTransformerId ? String(params.targetTransformerId).slice(0, 128) : undefined,
     transformerData: stripUndefined(params.transformerData || {}),
+    originalData: params.originalData ? stripUndefined(params.originalData) : undefined,
     requesterName: String(params.requesterName || 'ผู้ใช้งานทั่วไป').trim().slice(0, 120) || 'ผู้ใช้งานทั่วไป',
+    requesterContact: params.requesterContact?.trim().slice(0, 120),
+    requestNotes: params.requestNotes?.trim().slice(0, 500),
+    status: 'pending',
+    createdAt: nowIso,
+    updatedAt: nowIso
+  };
+
+  // If write quota is currently exhausted, save to local fallback storage immediately
+  if (isCloudWriteQuotaExhausted()) {
+    saveLocalDraftFallback(localDraft);
+    return draftId;
+  }
+
+  const payload: Record<string, any> = {
+    sheetId: localDraft.sheetId,
+    actionType: localDraft.actionType,
+    transformerData: localDraft.transformerData,
+    requesterName: localDraft.requesterName,
     status: 'pending',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
 
-  if (params.targetTransformerId) {
-    payload.targetTransformerId = String(params.targetTransformerId).slice(0, 128);
-  }
-  if (params.originalData) {
-    payload.originalData = stripUndefined(params.originalData);
-  }
-  if (params.requesterContact?.trim()) {
-    payload.requesterContact = String(params.requesterContact).trim().slice(0, 120);
-  }
-  if (params.requestNotes?.trim()) {
-    payload.requestNotes = String(params.requestNotes).trim().slice(0, 500);
-  }
+  if (localDraft.targetTransformerId) payload.targetTransformerId = localDraft.targetTransformerId;
+  if (localDraft.originalData) payload.originalData = localDraft.originalData;
+  if (localDraft.requesterContact) payload.requesterContact = localDraft.requesterContact;
+  if (localDraft.requestNotes) payload.requestNotes = localDraft.requestNotes;
 
   try {
     await setDoc(doc(db, 'transformer_drafts', draftId), payload);
+    saveLocalDraftFallback(localDraft);
     return draftId;
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
+    if (isQuotaError(error)) {
+      recordQuotaExhausted();
+      saveLocalDraftFallback(localDraft);
+      return draftId;
+    }
+    // Ensure draft is preserved in local fallback even if cloud rejected
+    saveLocalDraftFallback(localDraft);
+    return draftId;
   }
 }
 
@@ -375,12 +486,14 @@ export async function submitTransformerDraft(params: {
  * Fetches all transformer drafts
  */
 export async function fetchTransformerDrafts(): Promise<TransformerDraft[]> {
+  const localDrafts = getLocalDraftsFallback();
   const path = 'transformer_drafts';
-  try {
-    const snapshot = await getDocs(collection(db, 'transformer_drafts'));
-    if (snapshot.empty) return [];
 
-    const drafts: TransformerDraft[] = snapshot.docs.map(docSnap => {
+  try {
+    const snapshot = await withTimeout(getDocs(collection(db, 'transformer_drafts')), 5000, 'หมดเวลาดึงข้อมูลแบบร่าง');
+    if (snapshot.empty) return localDrafts;
+
+    const cloudDrafts: TransformerDraft[] = snapshot.docs.map(docSnap => {
       const data = docSnap.data();
       return {
         id: docSnap.id,
@@ -401,9 +514,22 @@ export async function fetchTransformerDrafts(): Promise<TransformerDraft[]> {
       };
     });
 
-    return drafts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Merge: cloud drafts take priority, but keep local fallback drafts not yet in cloud
+    const mergedMap = new Map<string, TransformerDraft>();
+    for (const d of localDrafts) mergedMap.set(d.id, d);
+    for (const d of cloudDrafts) mergedMap.set(d.id, d);
+
+    return Array.from(mergedMap.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, path);
+    if (isQuotaError(error)) {
+      recordQuotaExhausted();
+      console.warn('Firestore Quota exceeded on fetchTransformerDrafts, using local drafts.');
+    } else {
+      console.warn('Notice fetching drafts from Cloud, using local drafts:', error);
+    }
+    return localDrafts;
   }
 }
 
@@ -417,7 +543,7 @@ export function subscribeToTransformerDrafts(
   return onSnapshot(
     collection(db, 'transformer_drafts'),
     (snapshot) => {
-      const drafts: TransformerDraft[] = snapshot.docs.map(docSnap => {
+      const cloudDrafts: TransformerDraft[] = snapshot.docs.map(docSnap => {
         const data = docSnap.data();
         return {
           id: docSnap.id,
@@ -438,11 +564,24 @@ export function subscribeToTransformerDrafts(
         };
       });
 
-      drafts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      onUpdate(drafts);
+      const localDrafts = getLocalDraftsFallback();
+      const mergedMap = new Map<string, TransformerDraft>();
+      for (const d of localDrafts) mergedMap.set(d.id, d);
+      for (const d of cloudDrafts) mergedMap.set(d.id, d);
+
+      const allDrafts = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      onUpdate(allDrafts);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
+      if (isQuotaError(error)) {
+        recordQuotaExhausted();
+        console.warn('Transformer drafts subscription quota warning, using local drafts.');
+      } else {
+        console.warn('Transformer drafts subscription warning:', error);
+      }
+      onUpdate(getLocalDraftsFallback());
     }
   );
 }
@@ -455,6 +594,12 @@ export async function approveTransformerDraft(
   adminEmail: string,
   reviewNote?: string
 ): Promise<void> {
+  updateLocalDraftStatus(draftId, 'approved', adminEmail, reviewNote);
+
+  if (isCloudWriteQuotaExhausted()) {
+    return;
+  }
+
   const path = `transformer_drafts/${draftId}`;
   const updatePayload: Record<string, any> = {
     status: 'approved',
@@ -469,6 +614,10 @@ export async function approveTransformerDraft(
   try {
     await updateDoc(doc(db, 'transformer_drafts', draftId), updatePayload);
   } catch (error) {
+    if (isQuotaError(error)) {
+      recordQuotaExhausted();
+      return;
+    }
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
@@ -481,6 +630,12 @@ export async function rejectTransformerDraft(
   adminEmail: string,
   reviewNote?: string
 ): Promise<void> {
+  updateLocalDraftStatus(draftId, 'rejected', adminEmail, reviewNote);
+
+  if (isCloudWriteQuotaExhausted()) {
+    return;
+  }
+
   const path = `transformer_drafts/${draftId}`;
   const updatePayload: Record<string, any> = {
     status: 'rejected',
@@ -495,6 +650,10 @@ export async function rejectTransformerDraft(
   try {
     await updateDoc(doc(db, 'transformer_drafts', draftId), updatePayload);
   } catch (error) {
+    if (isQuotaError(error)) {
+      recordQuotaExhausted();
+      return;
+    }
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
@@ -503,10 +662,20 @@ export async function rejectTransformerDraft(
  * Deletes a transformer draft (Admins only)
  */
 export async function deleteTransformerDraft(draftId: string): Promise<void> {
+  removeLocalDraftFallback(draftId);
+
+  if (isCloudWriteQuotaExhausted()) {
+    return;
+  }
+
   const path = `transformer_drafts/${draftId}`;
   try {
     await deleteDoc(doc(db, 'transformer_drafts', draftId));
   } catch (error) {
+    if (isQuotaError(error)) {
+      recordQuotaExhausted();
+      return;
+    }
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
