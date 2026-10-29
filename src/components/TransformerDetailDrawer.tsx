@@ -13,11 +13,6 @@ import {
   Activity,
   Layers,
   FileSpreadsheet,
-  ArrowUp,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  Move,
   Navigation,
   ExternalLink,
   Copy,
@@ -78,10 +73,7 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
     setTimeout(() => setCopiedGps(false), 2000);
   };
 
-  const handleNudge = (dx: number, dy: number) => {
-    if (!onUpdatePosition) return;
-    onUpdatePosition(transformer.id, transformer.x + dx, transformer.y + dy);
-  };
+
 
   return (
     <div className="absolute top-16 right-4 z-30 w-84 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4 animate-in fade-in slide-in-from-right-4 duration-200 text-slate-800 dark:text-slate-200">
@@ -152,56 +144,7 @@ export const TransformerDetailDrawer: React.FC<TransformerDetailDrawerProps> = (
         </div>
       </div>
 
-      {/* Position Nudge Controls (Editor only) */}
-      {!isReadOnly && onUpdatePosition && (
-        <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2">
-          <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-            <span className="flex items-center gap-1">
-              <Move className="w-3.5 h-3.5 text-blue-500" />
-              <span>ตำแหน่งพิกัดผัง</span>
-            </span>
-            <span className="font-mono text-slate-800 dark:text-slate-200">
-              X: {transformer.x}, Y: {transformer.y}
-            </span>
-          </div>
 
-          <div className="flex items-center justify-center gap-1.5 pt-1">
-            <button
-              onClick={() => handleNudge(-10, 0)}
-              title="เลื่อนซ้าย (-10px)"
-              className="p-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <div className="flex flex-col gap-1">
-              <button
-                onClick={() => handleNudge(0, -10)}
-                title="เลื่อนขึ้น (-10px)"
-                className="p-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <ArrowUp className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => handleNudge(0, 10)}
-                title="เลื่อนลง (+10px)"
-                className="p-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <ArrowDown className="w-4 h-4" />
-              </button>
-            </div>
-            <button
-              onClick={() => handleNudge(10, 0)}
-              title="เลื่อนขวา (+10px)"
-              className="p-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-            >
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-          <p className="text-[10px] text-center text-slate-400">
-            *หรือคลิกลากตัวหม้อแปลงบนผังวงจรได้โดยตรง
-          </p>
-        </div>
-      )}
 
       {/* GPS Coordinates & Navigation Card */}
       <div className="p-3 bg-blue-50/70 dark:bg-blue-950/40 rounded-xl border border-blue-200/80 dark:border-blue-900/50 space-y-2.5">

@@ -634,11 +634,41 @@ export default function App() {
         if (!isMounted) return;
 
         if (cloudSheets && cloudSheets.length > 0) {
-          const cloudJson = JSON.stringify(cloudSheets);
-          lastSavedSheetsJsonRef.current = cloudJson;
-          setSheets(cloudSheets);
+          // Check local sheets in localStorage to prevent wiping offline or local edits
+          let currentLocalSheets: DiagramSheet[] = [];
           try {
-            localStorage.setItem(STORAGE_KEY_SHEETS, cloudJson);
+            const raw = localStorage.getItem(STORAGE_KEY_SHEETS);
+            if (raw) currentLocalSheets = JSON.parse(raw);
+          } catch {}
+
+          // Create an automatic rolling backup snapshot before updating
+          if (currentLocalSheets.length > 0) {
+            try {
+              localStorage.setItem(`pea_sld_backup_${Date.now()}`, JSON.stringify(currentLocalSheets));
+            } catch {}
+          }
+
+          let hasLocalKeep = false;
+          const mergedSheets = cloudSheets.map(cs => {
+            const ls = currentLocalSheets.find(l => l.id === cs.id || l.sheetNo === cs.sheetNo);
+            // If local sheet has transformers while cloud sheet is empty (e.g. offline edits or quota exceeded)
+            if (ls && (ls.transformers?.length || 0) > 0 && (!cs.transformers || cs.transformers.length === 0)) {
+              hasLocalKeep = true;
+              return {
+                ...cs,
+                transformers: ls.transformers,
+                updatedAt: ls.updatedAt || new Date().toISOString()
+              };
+            }
+            return cs;
+          });
+
+          const finalSheets = hasLocalKeep ? mergedSheets : cloudSheets;
+          const finalJson = JSON.stringify(finalSheets);
+          lastSavedSheetsJsonRef.current = finalJson;
+          setSheets(finalSheets);
+          try {
+            localStorage.setItem(STORAGE_KEY_SHEETS, finalJson);
           } catch {}
           setSheetConfig(prev => ({
             ...prev,
@@ -646,6 +676,11 @@ export default function App() {
             syncStatus: 'success',
             errorMessage: undefined
           }));
+
+          if (hasLocalKeep) {
+            hasUserEditedRef.current = true;
+            saveSheetsToCloudFirestore(finalSheets).catch(() => {});
+          }
         }
       } catch (err: any) {
         console.warn('Initial Cloud Firestore fetch notice:', err);
@@ -1825,6 +1860,7 @@ export default function App() {
             }
             return s;
           });
+          hasUserEditedRef.current = true;
           setSheets(withPaths);
           setSearchQuery('');
           setFilterKva(null);
