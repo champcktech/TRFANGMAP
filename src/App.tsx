@@ -44,6 +44,8 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './firebase';
 import { 
   saveSheetsToCloudFirestore, 
+  saveSingleSheetToCloudFirestore,
+  saveSelectedSheetsToCloudFirestore,
   fetchSheetsFromCloudFirestore,
   subscribeToCloudSheets,
   signOutFromCloud,
@@ -534,7 +536,7 @@ export default function App() {
     });
   }, [showToast]);
 
-  const handleManualSaveToCloud = useCallback(async () => {
+  const handleManualSaveToCloud = useCallback(async (target?: 'all' | 'current' | string[] | string) => {
     if (isSavingToCloud) return;
     setIsSavingToCloud(true);
     const sheetsJson = JSON.stringify(sheets);
@@ -548,20 +550,60 @@ export default function App() {
     } catch {}
 
     try {
-      // Force retry if user explicitly clicks the manual save button
-      await saveSheetsToCloudFirestore(sheets, { forceRetry: true });
-      resetQuotaExhausted();
-      setLastSavedCloudTime(nowStr);
-      setCloudSyncError(null);
-      hasUserEditedRef.current = false;
-      lastSavedSheetsJsonRef.current = sheetsJson;
-      setSheetConfig(prev => ({
-        ...prev,
-        lastSyncedAt: nowStr,
-        syncStatus: 'success',
-        errorMessage: undefined
-      }));
-      showToast(`บันทึกข้อมูลผังวงจรลง Firebase สำเร็จแล้ว (${nowStr}) ครบทุกหน้า (${totalAllTransformers} เครื่อง)`, 'success');
+      if (target === 'current' || (typeof target === 'string' && target !== 'all')) {
+        const sheetId = (target === 'current' ? activeSheetId : target) || activeSheetId;
+        const targetSheet = sheets.find(s => s.id === sheetId) || sheets[0];
+        if (!targetSheet) throw new Error('ไม่พบหน้าผังวงจรที่ต้องการบันทึก');
+
+        await saveSingleSheetToCloudFirestore(targetSheet, { forceRetry: true });
+        resetQuotaExhausted();
+        setLastSavedCloudTime(nowStr);
+        setCloudSyncError(null);
+        hasUserEditedRef.current = false;
+        lastSavedSheetsJsonRef.current = sheetsJson;
+        setSheetConfig(prev => ({
+          ...prev,
+          lastSyncedAt: nowStr,
+          syncStatus: 'success',
+          errorMessage: undefined
+        }));
+        const count = targetSheet.transformers?.length || 0;
+        showToast(`บันทึกหน้า "${targetSheet.sheetNo || ''} ${targetSheet.title}" (${count} เครื่อง) ลง Firebase สำเร็จแล้ว (${nowStr})`, 'success');
+      } else if (Array.isArray(target)) {
+        if (target.length === 0) {
+          showToast('กรุณาเลือกหน้าผังอย่างน้อย 1 หน้าเพื่อบันทึก', 'info');
+          setIsSavingToCloud(false);
+          return;
+        }
+        const savedCount = await saveSelectedSheetsToCloudFirestore(sheets, target, { forceRetry: true });
+        resetQuotaExhausted();
+        setLastSavedCloudTime(nowStr);
+        setCloudSyncError(null);
+        hasUserEditedRef.current = false;
+        lastSavedSheetsJsonRef.current = sheetsJson;
+        setSheetConfig(prev => ({
+          ...prev,
+          lastSyncedAt: nowStr,
+          syncStatus: 'success',
+          errorMessage: undefined
+        }));
+        showToast(`บันทึกหน้าที่เลือก ${savedCount} หน้ารวมลง Firebase สำเร็จแล้ว (${nowStr})`, 'success');
+      } else {
+        // 'all' or default
+        await saveSheetsToCloudFirestore(sheets, { forceRetry: true });
+        resetQuotaExhausted();
+        setLastSavedCloudTime(nowStr);
+        setCloudSyncError(null);
+        hasUserEditedRef.current = false;
+        lastSavedSheetsJsonRef.current = sheetsJson;
+        setSheetConfig(prev => ({
+          ...prev,
+          lastSyncedAt: nowStr,
+          syncStatus: 'success',
+          errorMessage: undefined
+        }));
+        showToast(`บันทึกข้อมูลผังวงจรลง Firebase สำเร็จแล้ว (${nowStr}) ครบทุกหน้า (${totalAllTransformers} เครื่อง)`, 'success');
+      }
     } catch (err: any) {
       const isQuota = isQuotaError(err);
       if (isQuota) {
@@ -585,7 +627,7 @@ export default function App() {
     } finally {
       setIsSavingToCloud(false);
     }
-  }, [sheets, totalAllTransformers, isSavingToCloud, showToast]);
+  }, [sheets, activeSheetId, totalAllTransformers, isSavingToCloud, showToast]);
 
   const handleRestoreFullFangDataset = useCallback(async () => {
     let total = 0;

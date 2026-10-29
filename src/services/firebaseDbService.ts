@@ -304,6 +304,57 @@ export async function saveSheetsToCloudFirestore(
 }
 
 /**
+ * Saves a single diagram sheet to Firestore under /sheets/{sheetId} in the shared workspace (uses only 1 write operation)
+ */
+export async function saveSingleSheetToCloudFirestore(
+  sheet: DiagramSheet,
+  options?: { forceRetry?: boolean }
+): Promise<void> {
+  if (!sheet) return;
+  if (!options?.forceRetry && isCloudWriteQuotaExhausted()) {
+    throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบบันทึกข้อมูลหน้านี้ลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
+  }
+
+  const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${sheet.id}`, 0);
+  const docRef = doc(db, 'sheets', docId);
+  const baseData = buildValidatedSheetPayload(sheet);
+
+  try {
+    await withTimeout(
+      setDoc(
+        docRef,
+        {
+          ...baseData,
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      ),
+      5000
+    );
+    resetQuotaExhausted();
+  } catch (err: any) {
+    if (isQuotaError(err)) {
+      recordQuotaExhausted();
+      throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบได้บันทึกข้อมูลหน้านี้ลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Saves specific selected diagram sheets to Firestore
+ */
+export async function saveSelectedSheetsToCloudFirestore(
+  allSheets: DiagramSheet[],
+  targetSheetIds: string[],
+  options?: { forceRetry?: boolean }
+): Promise<number> {
+  const targetSheets = allSheets.filter(s => targetSheetIds.includes(s.id));
+  if (targetSheets.length === 0) return 0;
+  return saveSheetsToCloudFirestore(targetSheets, options);
+}
+
+/**
  * Fetches all shared diagram sheets from Firestore (no login required)
  */
 export async function fetchSheetsFromCloudFirestore(): Promise<DiagramSheet[]> {

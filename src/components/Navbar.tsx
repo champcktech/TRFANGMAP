@@ -79,7 +79,7 @@ interface NavbarProps {
   isSavingToCloud?: boolean;
   lastSavedCloudTime?: string;
   cloudSyncError?: string | null;
-  onManualSaveToCloud?: () => void;
+  onManualSaveToCloud?: (target?: 'all' | 'current' | string[] | string) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -126,11 +126,24 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [isNavFilterOpen, setIsNavFilterOpen] = useState(false);
+  const [isSaveMenuOpen, setIsSaveMenuOpen] = useState(false);
+  const [isSelectiveSaveModalOpen, setIsSelectiveSaveModalOpen] = useState(false);
+  const [selectedSheetIds, setSelectedSheetIds] = useState<string[]>([]);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const navFilterRef = useRef<HTMLDivElement>(null);
+  const saveMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close search popover & filter popover on outside click
+  const activeSheetObj = useMemo(() => {
+    return sheets.find(s => s.id === activeSheetId) || sheets[0];
+  }, [sheets, activeSheetId]);
+
+  const activeSheetTfsCount = activeSheetObj?.transformers?.length ?? transformerCount;
+  const allSheetsTfsTotal = useMemo(() => {
+    return sheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0);
+  }, [sheets]);
+
+  // Close search popover & filter popover & save menu on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
@@ -138,6 +151,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       }
       if (navFilterRef.current && !navFilterRef.current.contains(e.target as Node)) {
         setIsNavFilterOpen(false);
+      }
+      if (saveMenuRef.current && !saveMenuRef.current.contains(e.target as Node)) {
+        setIsSaveMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -159,11 +175,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  // Active sheet object and transformer count by type
-  const activeSheetObj = useMemo(() => {
-    return sheets.find(s => s.id === activeSheetId) || sheets[0];
-  }, [sheets, activeSheetId]);
 
   const { publicCount, privateCount } = useMemo(() => {
     const list = activeSheetObj?.transformers || [];
@@ -759,58 +770,171 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
-        {/* Firebase Save Status & Force Save Button */}
+        {/* Firebase Save Status & Multi-Options Save Split Button */}
         {!isReadOnly && (
           <div className="flex items-center gap-1">
-            <button
-              id="btn-cloud-sync-status"
-              onClick={onManualSaveToCloud || onOpenGoogleSheetsModal}
-              disabled={isSavingToCloud}
-              title={
-                isSavingToCloud
-                  ? 'กำลังบันทึกข้อมูลผังและหม้อแปลงขึ้น Firebase Firestore...'
-                  : cloudSyncError
-                  ? `สถานะ: ${cloudSyncError}\n(คลิกเพื่อลองบันทึกใหม่)`
-                  : `✅ ข้อมูลหม้อแปลงถูกบันทึกลง Firebase เรียบร้อยแล้ว\nบันทึกสำเร็จล่าสุด: ${lastSavedCloudTime || sheetConfig.lastSyncedAt || 'เมื่อสักครู่'}\n(คลิกปุ่มนี้เพื่อสั่งบันทึกลง Firebase ซ้ำทันที)`
-              }
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all border cursor-pointer shadow-2xs active:scale-95 select-none ${
-                isSavingToCloud
-                  ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border-amber-400 dark:border-amber-600 animate-pulse'
-                  : cloudSyncError
-                  ? 'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100'
-                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 hover:border-emerald-400'
-              }`}
-            >
-              {isSavingToCloud ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400" />
-                  <span className="hidden sm:inline">กำลังบันทึก Firebase...</span>
-                  <span className="sm:hidden">กำลังบันทึก...</span>
-                </>
-              ) : sheetConfig.syncStatus === 'cached' || (cloudSyncError && cloudSyncError.includes('โควตา')) ? (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span className="hidden md:inline">บันทึกในเครื่องปลอดภัย (โควตา Cloud เต็ม)</span>
-                  <span className="hidden sm:inline md:hidden">ในเครื่องปลอดภัย</span>
-                  <span className="sm:hidden">ในเครื่อง</span>
-                </>
-              ) : cloudSyncError ? (
-                <>
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span className="hidden sm:inline">บันทึกในเครื่อง (คลิกลองใหม่)</span>
-                  <span className="sm:hidden">ในเครื่อง</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span className="hidden md:inline">
-                    บันทึก Firebase แล้ว {lastSavedCloudTime || sheetConfig.lastSyncedAt ? `(${lastSavedCloudTime || sheetConfig.lastSyncedAt})` : ''}
-                  </span>
-                  <span className="hidden sm:inline md:hidden">บันทึก Firebase แล้ว</span>
-                  <span className="sm:hidden">บันทึกแล้ว</span>
-                </>
+            <div ref={saveMenuRef} className="relative flex items-stretch">
+              {/* Quick Save Main Button */}
+              <button
+                id="btn-cloud-sync-status"
+                onClick={() => {
+                  if (onManualSaveToCloud) {
+                    onManualSaveToCloud('current');
+                  } else {
+                    onOpenGoogleSheetsModal();
+                  }
+                }}
+                disabled={isSavingToCloud}
+                title={
+                  isSavingToCloud
+                    ? 'กำลังบันทึกข้อมูลผังและหม้อแปลงขึ้น Firebase Firestore...'
+                    : cloudSyncError
+                    ? `สถานะ: ${cloudSyncError}\n(คลิกเพื่อบันทึกหน้านี้)`
+                    : `✅ บันทึก Cloud เรียบร้อยแล้ว (${sheetNo} ${sheetTitle})\nบันทึกสำเร็จล่าสุด: ${lastSavedCloudTime || sheetConfig.lastSyncedAt || 'เมื่อสักครู่'}\n(คลิกปุ่มนี้เพื่อบันทึกเฉพาะหน้านี้ทันที / หรือคลิกลูกศรเพื่อเลือกหน้า)`
+                }
+                className={`px-2.5 py-1 rounded-l-lg text-xs font-bold flex items-center gap-1.5 transition-all border border-r-0 cursor-pointer shadow-2xs active:scale-95 select-none ${
+                  isSavingToCloud
+                    ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border-amber-400 dark:border-amber-600 animate-pulse'
+                    : cloudSyncError
+                    ? 'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100'
+                    : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 hover:border-emerald-400'
+                }`}
+              >
+                {isSavingToCloud ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                    <span className="hidden sm:inline">กำลังบันทึก...</span>
+                    <span className="sm:hidden">บันทึก...</span>
+                  </>
+                ) : sheetConfig.syncStatus === 'cached' || (cloudSyncError && cloudSyncError.includes('โควตา')) ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span className="hidden md:inline">บันทึกในเครื่องปลอดภัย</span>
+                    <span className="sm:hidden">ในเครื่อง</span>
+                  </>
+                ) : cloudSyncError ? (
+                  <>
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span className="hidden sm:inline">บันทึกหน้านี้</span>
+                    <span className="sm:hidden">บันทึก</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span className="hidden md:inline">
+                      บันทึกแล้ว {lastSavedCloudTime || sheetConfig.lastSyncedAt ? `(${lastSavedCloudTime || sheetConfig.lastSyncedAt})` : ''}
+                    </span>
+                    <span className="hidden sm:inline md:hidden">บันทึกหน้านี้</span>
+                    <span className="sm:hidden">บันทึก</span>
+                  </>
+                )}
+              </button>
+
+              {/* Dropdown Options Toggle Arrow */}
+              <button
+                id="btn-save-options-toggle"
+                onClick={() => setIsSaveMenuOpen(prev => !prev)}
+                disabled={isSavingToCloud}
+                title="เลือกตัวเลือกการบันทึก: บันทึกเฉพาะหน้านี้, บันทึกครบทุกหน้า, หรือเลือกบางหน้า"
+                className={`px-1.5 py-1 rounded-r-lg text-xs font-bold flex items-center transition-all border cursor-pointer select-none ${
+                  isSavingToCloud
+                    ? 'bg-amber-100 text-amber-900 border-amber-400 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-600 opacity-60'
+                    : cloudSyncError
+                    ? 'bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 hover:bg-amber-100'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 hover:border-emerald-400'
+                }`}
+              >
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isSaveMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Save Options Popover Menu */}
+              {isSaveMenuOpen && (
+                <div 
+                  className="absolute right-0 top-full mt-1.5 w-76 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 divide-y divide-slate-100 dark:divide-slate-700/60 text-xs"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                    <span>ตัวเลือกการบันทึกผังวงจร</span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold lowercase">Firebase</span>
+                  </div>
+
+                  <div className="py-1">
+                    {/* Option 1: Save Current Sheet Only */}
+                    <button
+                      onClick={() => {
+                        setIsSaveMenuOpen(false);
+                        onManualSaveToCloud?.('current');
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-800 dark:text-slate-200 flex items-start gap-2.5 transition-colors cursor-pointer group"
+                    >
+                      <div className="p-1.5 bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 rounded-lg group-hover:scale-105 transition-transform shrink-0 mt-0.5">
+                        <Zap className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold flex items-center gap-1.5">
+                          <span className="truncate">บันทึกเฉพาะหน้านี้</span>
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">
+                            แนะนำ
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {sheetNo} {sheetTitle} ({activeSheetTfsCount} เครื่อง)
+                        </div>
+                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">
+                          ⚡ ใช้โควตา Cloud 1 ครั้ง (ประหยัดโควตา 83%)
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* Option 2: Save All Sheets */}
+                    <button
+                      onClick={() => {
+                        setIsSaveMenuOpen(false);
+                        onManualSaveToCloud?.('all');
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-800 dark:text-slate-200 flex items-start gap-2.5 transition-colors cursor-pointer group"
+                    >
+                      <div className="p-1.5 bg-purple-100 dark:bg-purple-950/80 text-purple-600 dark:text-purple-400 rounded-lg group-hover:scale-105 transition-transform shrink-0 mt-0.5">
+                        <Layers className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-slate-800 dark:text-slate-100">
+                          บันทึกทุกหน้า ({sheets.length} หน้า)
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          รวมทุกสายป้อน {allSheetsTfsTotal} เครื่อง
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                          เขียน Firestore {sheets.length} ครั้ง เพื่อให้ตรงกันทุกหน้า
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* Option 3: Choose specific sheets */}
+                    <button
+                      onClick={() => {
+                        setIsSaveMenuOpen(false);
+                        setSelectedSheetIds([activeSheetId || sheets[0]?.id || '']);
+                        setIsSelectiveSaveModalOpen(true);
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-800 dark:text-slate-200 flex items-start gap-2.5 transition-colors cursor-pointer group"
+                    >
+                      <div className="p-1.5 bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-105 transition-transform shrink-0 mt-0.5">
+                        <Database className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-slate-800 dark:text-slate-100">
+                          เลือกหน้าที่ต้องการบันทึก...
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          เลือกติ๊กเฉพาะบางหน้า (เช่น หน้า 1 และ 3)
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
 
             {/* Cloud Database Modal Trigger */}
             <button
@@ -876,6 +1000,127 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
               <LogOut className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-500 transition-colors shrink-0" />
             </button>
+          </div>
+        )}
+        {/* Selective Save Modal */}
+        {isSelectiveSaveModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+            <div 
+              className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-xl">
+                    <Database className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white text-sm">เลือกหน้าที่ต้องการบันทึก</h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">บันทึกเฉพาะหน้าที่เลือกขึ้น Firebase Cloud</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSelectiveSaveModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-2 max-h-72 overflow-y-auto">
+                <div className="flex items-center justify-between text-xs pb-1 mb-1 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400 text-[11px]">ติ๊กหน้าที่ต้องการบันทึก:</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSheetIds(sheets.map(s => s.id))}
+                      className="text-blue-600 dark:text-blue-400 text-[11px] hover:underline cursor-pointer"
+                    >
+                      เลือกทั้งหมด
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSheetIds([])}
+                      className="text-slate-500 dark:text-slate-400 text-[11px] hover:underline cursor-pointer"
+                    >
+                      ล้างการเลือก
+                    </button>
+                  </div>
+                </div>
+
+                {sheets.map((sh, idx) => {
+                  const isSelected = selectedSheetIds.includes(sh.id);
+                  const isCurrent = sh.id === activeSheetId;
+                  const tfsCount = sh.transformers?.length || 0;
+                  return (
+                    <label
+                      key={sh.id}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border text-xs cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-blue-50/70 border-blue-300 dark:bg-blue-950/40 dark:border-blue-700 text-slate-900 dark:text-white'
+                          : 'bg-white border-slate-200 dark:bg-slate-800 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSheetIds(prev => [...prev, sh.id]);
+                            } else {
+                              setSelectedSheetIds(prev => prev.filter(id => id !== sh.id));
+                            }
+                          }}
+                          className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <div className="min-w-0">
+                          <div className="font-semibold flex items-center gap-1.5">
+                            <span>{sh.sheetNo || `(${idx + 1})`} {sh.title}</span>
+                            {isCurrent && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300">
+                                หน้านี้
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-400 dark:text-slate-500">
+                            สายป้อน {sh.feederCode || 'FAA'} • {tfsCount} หม้อแปลง
+                          </div>
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between gap-3">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  จะใช้โควตา Cloud: <strong className="text-slate-900 dark:text-white font-bold">{selectedSheetIds.length}</strong> ยูนิต
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsSelectiveSaveModalOpen(false)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700 cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSelectiveSaveModalOpen(false);
+                      onManualSaveToCloud?.(selectedSheetIds);
+                    }}
+                    disabled={selectedSheetIds.length === 0}
+                    className="px-4 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white shadow-xs cursor-pointer transition-colors"
+                  >
+                    บันทึก {selectedSheetIds.length} หน้าที่เลือก
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

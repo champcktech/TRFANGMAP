@@ -7,6 +7,8 @@ import {
 } from '../services/googleSheetsService';
 import {
   saveSheetsToCloudFirestore,
+  saveSingleSheetToCloudFirestore,
+  saveSelectedSheetsToCloudFirestore,
   fetchSheetsFromCloudFirestore,
   isQuotaError
 } from '../services/firebaseDbService';
@@ -20,7 +22,11 @@ import {
   Database,
   ShieldCheck,
   Trash2,
-  Users
+  Users,
+  Zap,
+  Layers,
+  Check,
+  CheckSquare
 } from 'lucide-react';
 
 interface GoogleSheetsSyncModalProps {
@@ -44,6 +50,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   transformers,
   config,
   allSheets = [],
+  activeSheetId,
   isCloudAutoSync = true,
   onToggleCloudAutoSync,
   onClose,
@@ -56,6 +63,10 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [selectedSheetIds, setSelectedSheetIds] = useState<string[]>(() => 
+    activeSheetId ? [activeSheetId] : allSheets.map(s => s.id)
+  );
+  const [isSelectSheetsOpen, setIsSelectSheetsOpen] = useState(false);
 
   const allSheetsTransformers = useMemo(() => {
     if (!allSheets || allSheets.length === 0) return transformers;
@@ -102,11 +113,76 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   };
 
   // --- Shared Cloud Firestore Database Handlers (No Login Required) ---
+  const handleSaveCurrentSheetOnly = async () => {
+    const curSheet = allSheets.find(s => s.id === activeSheetId) || allSheets[0];
+    if (!curSheet) return;
+    setIsLoading(true);
+    setStatusMessage({ type: 'info', text: `กำลังบันทึกเฉพาะหน้าผัง "${curSheet.sheetNo} ${curSheet.title}" ขึ้นฐานข้อมูล Cloud...` });
+    try {
+      await saveSingleSheetToCloudFirestore(curSheet, { forceRetry: true });
+      const now = new Date().toLocaleTimeString('th-TH');
+      onUpdateConfig({
+        ...config,
+        lastSyncedAt: now,
+        syncStatus: 'success'
+      });
+      const tfsCount = curSheet.transformers?.length || 0;
+      setStatusMessage({
+        type: 'success',
+        text: `บันทึกหน้า "${curSheet.sheetNo} ${curSheet.title}" (${tfsCount} หม้อแปลง) ลง Cloud Database เรียบร้อยแล้ว! (ใช้โควตา Cloud เพียง 1 ครั้ง - เวลา ${now})`
+      });
+    } catch (err: any) {
+      if (isQuotaError(err)) {
+        setStatusMessage({
+          type: 'error',
+          text: 'โควตาการเขียน Firebase ประจำวันเต็มแล้ว โดยข้อมูลหน้านี้ถูกบันทึกไว้อย่างปลอดภัยในเครื่อง (LocalStorage) เรียบร้อยแล้ว'
+        });
+      } else {
+        setStatusMessage({ type: 'error', text: err?.message || 'เกิดข้อผิดพลาดในการบันทึกขึ้น Cloud Database' });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveSelectedSheets = async () => {
+    if (selectedSheetIds.length === 0) {
+      setStatusMessage({ type: 'error', text: 'กรุณาเลือกหน้าผังอย่างน้อย 1 หน้าเพื่อบันทึก' });
+      return;
+    }
+    setIsLoading(true);
+    setStatusMessage({ type: 'info', text: `กำลังบันทึก ${selectedSheetIds.length} หน้าผังที่เลือกขึ้นฐานข้อมูล Cloud...` });
+    try {
+      const count = await saveSelectedSheetsToCloudFirestore(allSheets, selectedSheetIds, { forceRetry: true });
+      const now = new Date().toLocaleTimeString('th-TH');
+      onUpdateConfig({
+        ...config,
+        lastSyncedAt: now,
+        syncStatus: 'success'
+      });
+      setStatusMessage({
+        type: 'success',
+        text: `บันทึก ${count} หน้าผังที่เลือกลง Cloud Database เรียบร้อยแล้ว! (${now})`
+      });
+    } catch (err: any) {
+      if (isQuotaError(err)) {
+        setStatusMessage({
+          type: 'error',
+          text: 'โควตาการเขียน Firebase ประจำวันเต็มแล้ว โดยข้อมูลทั้งหมดถูกบันทึกไว้อย่างปลอดภัยในเครื่อง (LocalStorage) เรียบร้อยแล้ว'
+        });
+      } else {
+        setStatusMessage({ type: 'error', text: err?.message || 'เกิดข้อผิดพลาดในการบันทึกขึ้น Cloud Database' });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSaveToCloudDb = async () => {
     setIsLoading(true);
     setStatusMessage({ type: 'info', text: 'กำลังบันทึกข้อมูลผังหม้อแปลง เส้นสายป้อน และสวิตช์ทั้งหมดขึ้นฐานข้อมูลกลาง (Cloud Database)...' });
     try {
-      const count = await saveSheetsToCloudFirestore(allSheets);
+      const count = await saveSheetsToCloudFirestore(allSheets, { forceRetry: true });
       const now = new Date().toLocaleTimeString('th-TH');
       onUpdateConfig({
         ...config,
@@ -334,42 +410,171 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 )}
               </div>
 
-              {/* Cloud Database Save & Load Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={handleSaveToCloudDb}
-                  disabled={isLoading}
-                  className="p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md transition-all flex flex-col items-center justify-center gap-2 group disabled:opacity-50 cursor-pointer"
-                >
-                  <div className="p-2.5 bg-blue-700/60 rounded-lg group-hover:scale-110 transition-transform">
-                    <CloudUpload className="w-6 h-6" />
-                  </div>
-                  <div className="text-center">
-                    <div className="font-bold text-sm">บันทึกขึ้นฐานข้อมูลกลาง (Save)</div>
-                    <div className="text-[11px] text-blue-100">
-                      อัปเดตทั้ง {allSheets.length} หน้าผัง ({allSheetsTransformers.length} หม้อแปลง + เส้นวงจร) ให้ทุกคนเห็นตรงกัน
-                    </div>
-                  </div>
-                </button>
+              {/* Cloud Database Save & Load Options */}
+              {(() => {
+                const activeSheet = allSheets.find(s => s.id === activeSheetId) || allSheets[0];
+                const activeSheetTfsCount = activeSheet?.transformers?.length || 0;
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Option 1: Save Current Sheet (Fast & Quota-efficient) */}
+                      <button
+                        type="button"
+                        onClick={handleSaveCurrentSheetOnly}
+                        disabled={isLoading}
+                        className="p-3.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl shadow-md transition-all flex items-start gap-3 text-left group disabled:opacity-50 cursor-pointer"
+                      >
+                        <div className="p-2 bg-white/20 rounded-lg group-hover:scale-105 transition-transform shrink-0 mt-0.5">
+                          <Zap className="w-5 h-5 text-amber-300" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-xs flex items-center gap-1.5">
+                            <span className="truncate">บันทึกเฉพาะหน้าปัจจุบัน</span>
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-400 text-amber-950">
+                              ประหยัดโควตา
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-blue-100 truncate mt-0.5">
+                            {activeSheet?.sheetNo} {activeSheet?.title} ({activeSheetTfsCount} เครื่อง)
+                          </div>
+                          <div className="text-[10px] text-blue-200 mt-1">
+                            เขียน Firestore 1 ครั้ง (ลดการใช้โควตา 83%)
+                          </div>
+                        </div>
+                      </button>
 
-                <button
-                  type="button"
-                  onClick={handleLoadFromCloudDb}
-                  disabled={isLoading}
-                  className="p-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md transition-all flex flex-col items-center justify-center gap-2 group disabled:opacity-50 cursor-pointer"
-                >
-                  <div className="p-2.5 bg-indigo-700/60 rounded-lg group-hover:scale-110 transition-transform">
-                    <CloudDownload className="w-6 h-6" />
-                  </div>
-                  <div className="text-center">
-                    <div className="font-bold text-sm">ดึงข้อมูลล่าสุดจากฐานข้อมูลกลาง</div>
-                    <div className="text-[11px] text-indigo-100">
-                      โหลดผังหม้อแปลงและเส้นวงจรล่าสุดจาก Cloud Firestore
+                      {/* Option 2: Save All Sheets */}
+                      <button
+                        type="button"
+                        onClick={handleSaveToCloudDb}
+                        disabled={isLoading}
+                        className="p-3.5 bg-slate-700 hover:bg-slate-800 text-white rounded-xl shadow-md transition-all flex items-start gap-3 text-left group disabled:opacity-50 cursor-pointer"
+                      >
+                        <div className="p-2 bg-white/10 rounded-lg group-hover:scale-105 transition-transform shrink-0 mt-0.5">
+                          <Layers className="w-5 h-5 text-indigo-300" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-xs text-white">บันทึกทุกหน้า ({allSheets.length} หน้า)</div>
+                          <div className="text-[11px] text-slate-300 truncate mt-0.5">
+                            รวมทั้งหมด {allSheetsTransformers.length} เครื่อง
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-1">
+                            เขียน Firestore {allSheets.length} ครั้ง (อัปเดตทุกหน้าพร้อมกัน)
+                          </div>
+                        </div>
+                      </button>
                     </div>
+
+                    {/* Secondary Actions: Selective Save & Download Latest */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsSelectSheetsOpen(!isSelectSheetsOpen)}
+                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+                      >
+                        <div className="flex items-center gap-2">
+                          <CheckSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          <span>เลือกหน้าที่ต้องการบันทึก ({selectedSheetIds.length}/{allSheets.length} หน้า)</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">{isSelectSheetsOpen ? '▲ ซ่อน' : '▼ แสดง'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleLoadFromCloudDb}
+                        disabled={isLoading}
+                        className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer border border-indigo-200 dark:border-indigo-800"
+                      >
+                        <CloudDownload className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span>ดึงข้อมูลล่าสุดจาก Cloud</span>
+                      </button>
+                    </div>
+
+                    {/* Collapsible Selective Sheets Panel */}
+                    {isSelectSheetsOpen && (
+                      <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2 animate-in fade-in duration-150">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-700 dark:text-slate-300 text-[11px]">
+                            ติ๊กเลือกหน้าที่ต้องการอัปเดตขึ้น Cloud:
+                          </span>
+                          <div className="flex gap-2 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSheetIds(allSheets.map(s => s.id))}
+                              className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                            >
+                              เลือกทั้งหมด
+                            </button>
+                            <span className="text-slate-300">|</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSheetIds([])}
+                              className="text-slate-500 hover:underline cursor-pointer"
+                            >
+                              ล้าง
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-44 overflow-y-auto">
+                          {allSheets.map((sh, idx) => {
+                            const isChecked = selectedSheetIds.includes(sh.id);
+                            const isCur = sh.id === activeSheetId;
+                            return (
+                              <label
+                                key={sh.id}
+                                className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                                  isChecked
+                                    ? 'bg-blue-50/70 border-blue-300 dark:bg-blue-950/50 dark:border-blue-700 text-slate-900 dark:text-white'
+                                    : 'bg-white border-slate-200 dark:bg-slate-850 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedSheetIds(prev => [...prev, sh.id]);
+                                    } else {
+                                      setSelectedSheetIds(prev => prev.filter(id => id !== sh.id));
+                                    }
+                                  }}
+                                  className="rounded text-blue-600 focus:ring-blue-500"
+                                />
+                                <div className="min-w-0 flex-1 truncate">
+                                  <span className="font-semibold">{sh.sheetNo || `(${idx + 1})`} {sh.title}</span>
+                                  {isCur && (
+                                    <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-amber-100 text-amber-800 font-bold">
+                                      หน้านี้
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] text-slate-400 block">
+                                    {sh.transformers?.length || 0} เครื่อง
+                                  </span>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+
+                        <div className="pt-2 flex items-center justify-between border-t border-slate-200 dark:border-slate-700">
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            จะใช้โควตา Cloud: <b>{selectedSheetIds.length}</b> ครั้ง
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleSaveSelectedSheets}
+                            disabled={isLoading || selectedSheetIds.length === 0}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            บันทึก {selectedSheetIds.length} หน้าที่เลือก
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </button>
-              </div>
+                );
+              })()}
 
               {/* Clear All Transformers Card */}
               <div className="p-4 bg-red-50/70 dark:bg-red-950/30 rounded-xl border border-red-200 dark:border-red-800/70 flex flex-col sm:flex-row items-center justify-between gap-3">
