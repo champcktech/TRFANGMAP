@@ -23,7 +23,6 @@ import {
   CheckCircle2,
   Lock,
   Unlock,
-  Layers,
   Search,
   PenTool,
   GitCommit,
@@ -1975,7 +1974,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
               )}
             </div>
 
-            {/* Quick Settings: Lock, Grid, Text Bg, Symbol Size */}
+            {/* Quick Settings: Lock & Symbol Size */}
             <div className="flex flex-col gap-1 border-t border-slate-200 dark:border-slate-700 pt-1.5">
               <div className="grid grid-cols-2 gap-1">
                 {/* Drag lock */}
@@ -1995,43 +1994,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   </button>
                 )}
 
-                {/* Grid */}
-                <button
-                  id="btn-toggle-grid-v"
-                  onClick={() => setShowGrid(!showGrid)}
-                  title="เปิด/ปิด เส้นตาราง (Toggle Grid)"
-                  className={`px-1.5 py-1 rounded-md text-[11px] flex items-center justify-center gap-1 font-medium transition-colors border cursor-pointer ${
-                    showGrid 
-                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-800' 
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
-                  }`}
-                >
-                  <Layers className="w-3 h-3" />
-                  <span>ตาราง</span>
-                </button>
-              </div>
-
-              {/* Text Background & Symbol Scale */}
-              <div className="grid grid-cols-2 gap-1">
-                <button
-                  id="btn-toggle-text-bg-v"
-                  onClick={() => {
-                    const next = !isTextBgTransparent;
-                    setIsTextBgTransparent(next);
-                    localStorage.setItem('canvas_text_bg_transparent', String(next));
-                  }}
-                  title={isTextBgTransparent ? 'พื้นโปร่งใส (คลิกเปลี่ยนเป็นมีกรอบ)' : 'พื้นมีกรอบ (คลิกเปลี่ยนเป็นโปร่งใส)'}
-                  className={`px-1 py-1 rounded-md text-[10px] flex items-center justify-center gap-1 font-medium transition-colors border cursor-pointer ${
-                    isTextBgTransparent
-                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
-                  }`}
-                >
-                  <Type className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span className="truncate">{isTextBgTransparent ? 'โปร่งใส' : 'มีกรอบ'}</span>
-                </button>
-
-                <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 rounded-md p-0.5 border border-slate-200 dark:border-slate-700 text-xs">
+                {/* Symbol Scale */}
+                <div className={`flex items-center justify-between bg-slate-100 dark:bg-slate-800 rounded-md p-0.5 border border-slate-200 dark:border-slate-700 text-xs ${isReadOnly || !onToggleDraggable ? 'col-span-2' : ''}`}>
                   <button
                     onClick={() => setSymbolScale(prev => Math.max(0.6, Number((prev - 0.1).toFixed(2))))}
                     title="ลดขนาดสัญลักษณ์"
@@ -2304,45 +2268,6 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   </button>
                 )}
               </div>
-
-              <button
-                id="btn-toggle-grid"
-                onClick={() => setShowGrid(!showGrid)}
-                title="เปิด/ปิด เส้นตาราง (Toggle Grid)"
-                className={`p-1 rounded-md transition-colors text-xs flex items-center gap-1 font-medium cursor-pointer ${
-                  showGrid 
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' 
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Layers className="w-3 h-3" />
-                <span className="hidden sm:inline text-[11px]">ตาราง</span>
-              </button>
-
-              {/* Toggle Text Background (Transparent vs Boxed) */}
-              <button
-                id="btn-toggle-text-bg"
-                onClick={() => {
-                  const next = !isTextBgTransparent;
-                  setIsTextBgTransparent(next);
-                  localStorage.setItem('canvas_text_bg_transparent', String(next));
-                }}
-                title={
-                  isTextBgTransparent
-                    ? 'พื้นหลังข้อความ: โปร่งใส (คลิกเพื่อเปลี่ยนเป็นมีกรอบการ์ดทึบ)'
-                    : 'พื้นหลังข้อความ: มีกรอบการ์ดทึบ (คลิกเพื่อเปลี่ยนเป็นพื้นโปร่งใส)'
-                }
-                className={`p-1 rounded-md transition-colors text-xs flex items-center gap-1 font-medium cursor-pointer ${
-                  isTextBgTransparent
-                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Type className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden sm:inline text-[11px]">
-                  {isTextBgTransparent ? 'พื้นโปร่งใส' : 'พื้นมีกรอบ'}
-                </span>
-              </button>
 
               {/* Symbol Size Scaling Button */}
               <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-md p-0.5 border border-slate-200 dark:border-slate-700 text-xs">
