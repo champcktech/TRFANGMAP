@@ -190,6 +190,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   const [pendingLandmarkType, setPendingLandmarkType] = useState<AnnotationType | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [addMenuPos, setAddMenuPos] = useState<{ x: number; y: number } | null>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement>(null);
@@ -321,6 +322,47 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
   const toolbarDragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
 
+  const toggleAddMenu = useCallback((btnEl: HTMLElement) => {
+    if (isAddMenuOpen) {
+      setIsAddMenuOpen(false);
+      return;
+    }
+    const rect = btnEl.getBoundingClientRect();
+    const rootRect = canvasRootRef.current?.getBoundingClientRect() || {
+      left: 0,
+      top: 0,
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+
+    if (toolbarLayout === 'vertical') {
+      const menuWidth = 350;
+      const spaceRight = window.innerWidth - rect.right;
+      // If there's enough space to the right of the vertical toolbar, place it there; otherwise place to the left
+      const x = spaceRight >= (menuWidth + 16)
+        ? Math.round(rect.right - rootRect.left + 8)
+        : Math.max(8, Math.round(rect.left - rootRect.left - menuWidth - 8));
+
+      const menuEstimatedHeight = 440;
+      const maxY = Math.max(8, Math.round((rootRect.height || window.innerHeight) - menuEstimatedHeight - 16));
+      const y = Math.max(8, Math.min(Math.round(rect.top - rootRect.top - 60), maxY));
+      setAddMenuPos({ x, y });
+    } else {
+      const menuWidth = 350;
+      const maxX = Math.max(8, Math.round((rootRect.width || window.innerWidth) - menuWidth - 16));
+      const x = Math.max(8, Math.min(Math.round(rect.left - rootRect.left), maxX));
+
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const menuEstimatedHeight = 440;
+      const y = spaceBelow >= menuEstimatedHeight
+        ? Math.round(rect.bottom - rootRect.top + 8)
+        : Math.max(8, Math.round(rect.top - rootRect.top - menuEstimatedHeight - 8));
+      setAddMenuPos({ x, y });
+    }
+
+    setIsAddMenuOpen(true);
+  }, [isAddMenuOpen, toolbarLayout]);
+
   const handleToolbarPointerDown = useCallback((e: React.PointerEvent) => {
     // Only primary button
     if (e.button !== 0) return;
@@ -328,6 +370,10 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     const target = e.target as HTMLElement;
     if (target.closest('button, input, select, [role="button"], a')) {
       return;
+    }
+
+    if (isAddMenuOpen) {
+      setIsAddMenuOpen(false);
     }
 
     e.preventDefault();
@@ -1768,7 +1814,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         onPointerDown={handleToolbarPointerDown}
         className={`absolute z-20 ${
           toolbarLayout === 'vertical'
-            ? 'flex flex-col items-stretch gap-1.5 w-56 max-h-[calc(100%-16px)] overflow-y-auto custom-scrollbar bg-white/95 dark:bg-slate-800/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl'
+            ? 'flex flex-col items-stretch gap-1.5 w-56 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-visible'
             : 'flex flex-wrap items-center gap-1.5 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-1.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-md hover:shadow-lg'
         } select-none transition-shadow ${
           isDraggingToolbar 
@@ -2069,43 +2115,31 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                   <span className="truncate">{canvasClickMode === 'draw_line' ? 'กำลังวาดเส้น...' : 'วาดเส้นใหม่'}</span>
                 </button>
 
-                {/* Add element dropdown button */}
-                <div className="relative">
-                  <button
-                    id="btn-mode-add-menu-v"
-                    onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
-                    className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
-                      canvasClickMode !== 'select' && canvasClickMode !== 'edit_line' && canvasClickMode !== 'draw_line'
-                        ? 'bg-amber-500 text-white shadow-md animate-pulse'
-                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 truncate">
-                      <Plus className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">
-                        {canvasClickMode === 'add' ? 'วางหม้อแปลง' :
-                         canvasClickMode === 'add_switch' ? 'วางสวิตช์' :
-                         canvasClickMode === 'add_annotation' ? 'วางข้อความ' :
-                         canvasClickMode === 'add_landmark' ? 'วางสถานที่' : 'เพิ่มสัญลักษณ์'}
-                      </span>
-                    </div>
-                    <ChevronDown className="w-3.5 h-3.5 opacity-80 shrink-0" />
-                  </button>
-
-                  {/* Add Elements Dropdown Menu */}
-                  {isAddMenuOpen && (
-                    <div 
-                      ref={addMenuRef}
-                      className={`absolute ${
-                        toolbarPos.x > 500 ? 'right-full mr-2' : 'left-full ml-2'
-                      } ${
-                        toolbarPos.y > 280 ? 'bottom-0' : 'top-0'
-                      } w-80 sm:w-[350px] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs max-h-[calc(100vh-60px)] overflow-y-auto`}
-                    >
-                      {renderAddMenuItems()}
-                    </div>
-                  )}
-                </div>
+                {/* Add element button (Triggers unified floating popover outside toolbar) */}
+                <button
+                  id="btn-mode-add-menu-v"
+                  type="button"
+                  onClick={(e) => toggleAddMenu(e.currentTarget)}
+                  title="คลิกเพื่อเลือกสัญลักษณ์วางบนผัง"
+                  className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                    canvasClickMode !== 'select' && canvasClickMode !== 'edit_line' && canvasClickMode !== 'draw_line'
+                      ? 'bg-amber-500 text-white shadow-md animate-pulse'
+                      : isAddMenuOpen
+                      ? 'bg-blue-700 text-white shadow-md ring-2 ring-blue-400'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Plus className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">
+                      {canvasClickMode === 'add' ? 'วางหม้อแปลง' :
+                       canvasClickMode === 'add_switch' ? 'วางสวิตช์' :
+                       canvasClickMode === 'add_annotation' ? 'วางข้อความ' :
+                       canvasClickMode === 'add_landmark' ? 'วางสถานที่' : 'เพิ่มสัญลักษณ์'}
+                    </span>
+                  </div>
+                  <ChevronDown className={`w-3.5 h-3.5 opacity-80 shrink-0 transition-transform ${isAddMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
               </div>
             )}
 
@@ -2394,36 +2428,29 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     <span>{canvasClickMode === 'draw_line' ? 'กำลังวาดเส้น...' : 'วาดเส้นใหม่'}</span>
                   </button>
 
-                  {/* Add Elements Dropdown / Mode Selector */}
-                  <div className="relative">
-                    <button
-                      id="btn-mode-add-menu"
-                      onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                        canvasClickMode !== 'select' && canvasClickMode !== 'edit_line' && canvasClickMode !== 'draw_line'
-                          ? 'bg-amber-500 text-white shadow-md animate-pulse'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
-                      }`}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>
-                        {canvasClickMode === 'add' ? 'วางหม้อแปลง' :
-                         canvasClickMode === 'add_switch' ? 'วางสวิตช์' :
-                         canvasClickMode === 'add_annotation' ? 'วางข้อความ' :
-                         canvasClickMode === 'add_landmark' ? 'วางสัญลักษณ์สถานที่' : 'เพิ่มสัญลักษณ์'}
-                      </span>
-                      <ChevronDown className="w-3.5 h-3.5 ml-0.5 opacity-80" />
-                    </button>
-
-                    {isAddMenuOpen && (
-                      <div 
-                        ref={addMenuRef}
-                        className="absolute right-0 top-full mt-2 w-80 sm:w-[350px] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs max-h-[calc(100vh-60px)] overflow-y-auto"
-                      >
-                        {renderAddMenuItems()}
-                      </div>
-                    )}
-                  </div>
+                  {/* Add Elements Button (Triggers unified floating popover outside toolbar) */}
+                  <button
+                    id="btn-mode-add-menu"
+                    type="button"
+                    onClick={(e) => toggleAddMenu(e.currentTarget)}
+                    title="คลิกเพื่อเลือกสัญลักษณ์วางบนผัง"
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      canvasClickMode !== 'select' && canvasClickMode !== 'edit_line' && canvasClickMode !== 'draw_line'
+                        ? 'bg-amber-500 text-white shadow-md animate-pulse'
+                        : isAddMenuOpen
+                        ? 'bg-blue-700 text-white shadow-md ring-2 ring-blue-400'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>
+                      {canvasClickMode === 'add' ? 'วางหม้อแปลง' :
+                       canvasClickMode === 'add_switch' ? 'วางสวิตช์' :
+                       canvasClickMode === 'add_annotation' ? 'วางข้อความ' :
+                       canvasClickMode === 'add_landmark' ? 'วางสัญลักษณ์สถานที่' : 'เพิ่มสัญลักษณ์'}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 ml-0.5 opacity-80 transition-transform ${isAddMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
                 </>
               )}
 
@@ -2447,6 +2474,17 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           </>
         )}
       </div>
+
+      {/* Floating Add-Element Popover (Rendered at canvas root level to eliminate any container clipping or scrollbars) */}
+      {isAddMenuOpen && addMenuPos && (
+        <div 
+          ref={addMenuRef}
+          style={{ left: `${addMenuPos.x}px`, top: `${addMenuPos.y}px` }}
+          className="absolute z-40 w-80 sm:w-[350px] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-2.5 animate-in fade-in zoom-in-95 duration-150 text-xs"
+        >
+          {renderAddMenuItems()}
+        </div>
+      )}
 
       {/* Adding Transformer Banner */}
       {canvasClickMode === 'add' && (
