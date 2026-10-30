@@ -42,10 +42,11 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   onEnterViewerMode,
   onImportSheets
 }) => {
+  // CRITICAL: Declare ALL hooks at the very top of the component
+  // before ANY conditional statements or early returns to strictly comply with React Rules of Hooks!
   const [copied, setCopied] = useState(false);
   const [copiedShort, setCopiedShort] = useState(false);
   const [shareScope, setShareScope] = useState<'all' | 'current'>('all');
-  // includeFullData is false by default so link is clean and short
   const [includeFullData, setIncludeFullData] = useState(false);
   const [showQrCode, setShowQrCode] = useState(true);
 
@@ -54,46 +55,68 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const [isShortening, setIsShortening] = useState(false);
   const [shortenError, setShortenError] = useState<string | null>(null);
 
+  // File import state (moved to top so hooks count remains constant)
+  const [importError, setImportError] = useState<string | null>(null);
+
   const effectiveActiveSheetId = activeSheetId || sheetId || '';
+  const safeSheets = useMemo(() => Array.isArray(sheets) ? sheets : [], [sheets]);
 
   const activeSheet = useMemo(() => {
-    if (!sheets || sheets.length === 0) {
-      return { id: effectiveActiveSheetId, title: sheetTitle || '', sheetNo: '' };
+    if (!safeSheets || safeSheets.length === 0) {
+      return { id: effectiveActiveSheetId, title: sheetTitle || '', sheetNo: '(1)' };
     }
-    return sheets.find(s => s.id === effectiveActiveSheetId) || sheets[0];
-  }, [sheets, effectiveActiveSheetId, sheetTitle]);
+    return safeSheets.find(s => s && s.id === effectiveActiveSheetId) || safeSheets[0] || { id: effectiveActiveSheetId, title: sheetTitle || '', sheetNo: '(1)' };
+  }, [safeSheets, effectiveActiveSheetId, sheetTitle]);
 
-  // Clean, short shareable URL
+  // Clean, short shareable URL with iframe/sandbox safety
   const cleanShareUrl = useMemo(() => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
-    const params = new URLSearchParams();
-    params.set('mode', 'view');
+    try {
+      if (typeof window === 'undefined') return '';
+      
+      let base = '';
+      const origin = window.location.origin;
+      const pathname = window.location.pathname || '';
 
-    if (shareScope === 'current' && activeSheet?.id) {
-      params.set('sheet', activeSheet.id);
+      if (origin && origin !== 'null' && !origin.startsWith('blob:') && !origin.startsWith('about:')) {
+        base = `${origin}${pathname}`;
+      } else if (window.location.href) {
+        base = window.location.href.split('?')[0].split('#')[0];
+      }
+
+      const params = new URLSearchParams();
+      params.set('mode', 'view');
+
+      if (shareScope === 'current' && activeSheet?.id) {
+        params.set('sheet', activeSheet.id);
+      }
+
+      const queryStr = params.toString();
+      return queryStr ? `${base}?${queryStr}` : base;
+    } catch {
+      return '';
     }
-
-    return `${origin}${pathname}?${params.toString()}`;
   }, [shareScope, activeSheet]);
 
   // Full shareable URL (with optional embedded data hash if user specifically toggles it)
   const shareableUrl = useMemo(() => {
     if (!includeFullData) return cleanShareUrl;
 
-    let hash = '';
-    if (sheets.length > 0) {
-      const targetSheets = shareScope === 'current' && activeSheet 
-        ? [activeSheet as DiagramSheet] 
-        : sheets;
-      const encoded = encodeSheetsToUrlHash(targetSheets, activeSheet?.id);
-      if (encoded) {
-        hash = `#data=${encoded}`;
+    try {
+      let hash = '';
+      if (safeSheets.length > 0) {
+        const targetSheets = shareScope === 'current' && activeSheet 
+          ? [activeSheet as DiagramSheet] 
+          : safeSheets;
+        const encoded = encodeSheetsToUrlHash(targetSheets, activeSheet?.id);
+        if (encoded) {
+          hash = `#data=${encoded}`;
+        }
       }
+      return `${cleanShareUrl}${hash}`;
+    } catch {
+      return cleanShareUrl;
     }
-
-    return `${cleanShareUrl}${hash}`;
-  }, [cleanShareUrl, includeFullData, sheets, shareScope, activeSheet]);
+  }, [cleanShareUrl, includeFullData, safeSheets, shareScope, activeSheet]);
 
   // Reset tinyUrl when scope or url changes
   useEffect(() => {
@@ -103,12 +126,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   // Generate QR Code using the clean short URL (much faster and easier to scan)
   const qrCodeUrl = useMemo(() => {
-    return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(cleanShareUrl)}&bgcolor=ffffff&color=1e3a8a&margin=1`;
+    if (!cleanShareUrl) return '';
+    try {
+      return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(cleanShareUrl)}&bgcolor=ffffff&color=1e3a8a&margin=1`;
+    } catch {
+      return '';
+    }
   }, [cleanShareUrl]);
 
+  // Early return ONLY after ALL hooks have been executed!
   if (!isOpen) return null;
 
   const copyToClipboard = async (text: string, isShort = false) => {
+    if (!text) return;
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);
@@ -129,15 +159,36 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       }
     } catch (err) {
       console.error('Failed to copy link', err);
+      // Fallback: prompt or select
+      try {
+        const input = document.getElementById('share-link-input') as HTMLInputElement | null;
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      } catch {}
     }
   };
 
   const handleOpenInNewTab = (urlToOpen: string) => {
-    window.open(urlToOpen, '_blank');
+    if (!urlToOpen) return;
+    try {
+      // Use hidden anchor link to safely bypass iframe sandbox popup blocking
+      const link = document.createElement('a');
+      link.href = urlToOpen;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch {
+      window.location.href = urlToOpen;
+    }
   };
 
   // One-click TinyURL generator
   const handleGenerateTinyUrl = async () => {
+    if (!cleanShareUrl) return;
     setIsShortening(true);
     setShortenError(null);
     try {
@@ -174,24 +225,26 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   };
 
   const handleExportJson = () => {
-    const dataStr = JSON.stringify({
-      appName: 'ผังหม้อแปลง กฟส.ฝาง',
-      version: '2.0',
-      exportedAt: new Date().toISOString(),
-      sheets
-    }, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `pea_fang_all_sheets_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      const dataStr = JSON.stringify({
+        appName: 'ผังหม้อแปลง กฟส.ฝาง',
+        version: '2.0',
+        exportedAt: new Date().toISOString(),
+        sheets: safeSheets
+      }, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `pea_fang_all_sheets_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export JSON', err);
+    }
   };
-
-  const [importError, setImportError] = useState<string | null>(null);
 
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -237,6 +290,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            title="ปิดหน้าต่าง"
           >
             <X className="w-4 h-4" />
           </button>
@@ -272,7 +326,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               >
                 <div className="text-xs font-bold flex items-center gap-1.5">
                   <Globe className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                  <span>ผังทั้งหมด ({sheets.length} หน้า)</span>
+                  <span>ผังทั้งหมด ({safeSheets.length} หน้า)</span>
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                   ผู้รับสลับดูได้ทุกหน้าผัง
@@ -314,6 +368,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             </div>
             <div className="flex gap-2">
               <input
+                id="share-link-input"
                 type="text"
                 readOnly
                 value={shareableUrl}
@@ -334,7 +389,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               </button>
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-500 px-0.5">
-              <span>ความยาว: {shareableUrl.length} ตัวอักษร (สั้นกระชับ ส่งใน LINE ได้ทันที)</span>
+              <span>ความยาว: {(shareableUrl || '').length} ตัวอักษร (สั้นกระชับ ส่งใน LINE ได้ทันที)</span>
               <button
                 type="button"
                 onClick={() => handleOpenInNewTab(shareableUrl)}
@@ -358,7 +413,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                   type="button"
                   onClick={handleGenerateTinyUrl}
                   disabled={isShortening}
-                  className="px-3 py-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                  className="px-3 py-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
                 >
                   {isShortening ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                   <span>{isShortening ? 'กำลังย่อลิงก์...' : 'กดสร้างลิงก์ย่อ TinyURL'}</span>
@@ -411,7 +466,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               </button>
             </div>
 
-            {showQrCode && (
+            {showQrCode && qrCodeUrl && (
               <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
                 <div className="w-28 h-28 bg-white p-1.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-center shrink-0">
                   <img

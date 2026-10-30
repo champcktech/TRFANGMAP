@@ -71,6 +71,7 @@ interface NavbarProps {
   onOpenAddModal: () => void;
   onOpenGoogleSheetsModal: () => void;
   onOpenPrintDiagram?: () => void;
+  onPrintDiagram?: () => void;
   onOpenEditSheetModal?: () => void;
   pendingDraftsCount?: number;
   onOpenDraftApprovalModal?: () => void;
@@ -170,6 +171,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       } else if (e.key === 'Escape') {
         setIsSearchFocused(false);
         setIsMobileSearchOpen(false);
+        setIsSaveMenuOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -291,7 +293,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-30 shadow-xs">
+    <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-40 shadow-xs">
       {/* 1. Brand Title: ผังหม้อแปลงจำหน่าย กฟส.ฝาง */}
       <div className="flex items-center gap-2.5">
         <div className={`w-8 h-8 rounded-lg ${
@@ -850,7 +852,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {/* Save Options Popover Menu */}
               {isSaveMenuOpen && (
                 <div 
-                  className="absolute right-0 top-full mt-1.5 w-76 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 divide-y divide-slate-100 dark:divide-slate-700/60 text-xs"
+                  className="absolute right-0 top-full mt-1.5 w-76 max-w-[calc(100vw-24px)] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 divide-y divide-slate-100 dark:divide-slate-700/60 text-xs"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center justify-between">

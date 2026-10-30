@@ -179,6 +179,58 @@ function createDefaultPresetSheets(legacyTfs: Transformer[] = [], legacySwitches
   return [sheet1, sheet2, sheet3];
 }
 
+export function sanitizeSheetsUniqueIds(sheets: DiagramSheet[]): DiagramSheet[] {
+  return sheets.map((sheet, sIdx) => {
+    const seenTfIds = new Set<string>();
+    const sanitizedTfs = (sheet.transformers || []).map((tf, tIdx) => {
+      let id = tf.id || `tf-${sIdx}-${tIdx}`;
+      if (seenTfIds.has(id)) {
+        id = `${id}-dup-${tIdx + 1}-${Math.random().toString(36).substring(2, 6)}`;
+      }
+      seenTfIds.add(id);
+      return { ...tf, id };
+    });
+
+    const seenSwIds = new Set<string>();
+    const sanitizedSwitches = (sheet.switches || []).map((sw, swIdx) => {
+      let id = sw.id || `sw-${sIdx}-${swIdx}`;
+      if (seenSwIds.has(id)) {
+        id = `${id}-dup-${swIdx + 1}-${Math.random().toString(36).substring(2, 6)}`;
+      }
+      seenSwIds.add(id);
+      return { ...sw, id };
+    });
+
+    const seenPathIds = new Set<string>();
+    const sanitizedPaths = (sheet.feederPaths || []).map((p, pIdx) => {
+      let id = p.id || `path-${sIdx}-${pIdx}`;
+      if (seenPathIds.has(id)) {
+        id = `${id}-dup-${pIdx + 1}-${Math.random().toString(36).substring(2, 6)}`;
+      }
+      seenPathIds.add(id);
+      return { ...p, id };
+    });
+
+    const seenAnnIds = new Set<string>();
+    const sanitizedAnnotations = (sheet.annotations || []).map((ann, aIdx) => {
+      let id = ann.id || `ann-${sIdx}-${aIdx}`;
+      if (seenAnnIds.has(id)) {
+        id = `${id}-dup-${aIdx + 1}-${Math.random().toString(36).substring(2, 6)}`;
+      }
+      seenAnnIds.add(id);
+      return { ...ann, id };
+    });
+
+    return {
+      ...sheet,
+      transformers: sanitizedTfs,
+      switches: sanitizedSwitches,
+      feederPaths: sanitizedPaths,
+      annotations: sanitizedAnnotations
+    };
+  });
+}
+
 function getInitialSheets(): DiagramSheet[] {
   let loadedSheets: DiagramSheet[] | null = null;
 
@@ -228,13 +280,12 @@ function getInitialSheets(): DiagramSheet[] {
     }
   }
 
-
   // 4. If still no sheets, return default preset sheets with empty transformers
   if (!loadedSheets || loadedSheets.length === 0) {
-    return createDefaultPresetSheets([], INITIAL_SWITCHES, INITIAL_FEEDER_PATHS, INITIAL_ANNOTATIONS);
+    return sanitizeSheetsUniqueIds(createDefaultPresetSheets([], INITIAL_SWITCHES, INITIAL_FEEDER_PATHS, INITIAL_ANNOTATIONS));
   }
 
-  return loadedSheets;
+  return sanitizeSheetsUniqueIds(loadedSheets);
 }
 
 function getInitialActiveSheetId(initialSheets: DiagramSheet[]): string {
@@ -770,7 +821,7 @@ export default function App() {
             return cs;
           });
 
-          const finalSheets = hasLocalKeep ? mergedSheets : cloudSheets;
+          const finalSheets = sanitizeSheetsUniqueIds(hasLocalKeep ? mergedSheets : cloudSheets);
           const finalJson = JSON.stringify(finalSheets);
           lastSavedSheetsJsonRef.current = finalJson;
           setSheets(finalSheets);
@@ -806,8 +857,9 @@ export default function App() {
 
     // 2. Real-time live listener from Firebase Firestore (instant cross-tab & multi-device sync)
     const unsubscribeCloud = subscribeToCloudSheets(
-      (remoteSheets) => {
-        if (!isMounted || !remoteSheets || remoteSheets.length === 0) return;
+      (rawRemoteSheets) => {
+        if (!isMounted || !rawRemoteSheets || rawRemoteSheets.length === 0) return;
+        const remoteSheets = sanitizeSheetsUniqueIds(rawRemoteSheets);
         const remoteJson = JSON.stringify(remoteSheets);
 
         // Only update local state if remote changed compared to our last saved version

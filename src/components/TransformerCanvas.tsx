@@ -190,6 +190,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
   const [pendingLandmarkType, setPendingLandmarkType] = useState<AnnotationType | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement>(null);
 
@@ -198,6 +199,12 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     const handleOutsideClick = (e: MouseEvent) => {
       if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node)) {
         setIsFilterMenuOpen(false);
+      }
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        const target = e.target as HTMLElement;
+        if (!target.closest('#btn-mode-add-menu-v') && !target.closest('#btn-mode-add-menu')) {
+          setIsAddMenuOpen(false);
+        }
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
@@ -1487,7 +1494,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       border: '#cbd5e1',
       frameBorder: '#334155',
       innerBorder: '#94a3b8',
-      cornerMark: '#2563eb'
+      cornerMark: '#2563eb',
+      cardBg: '#ffffff'
     },
     blueprint: {
       bg: 'bg-[#0a192f]',
@@ -1504,7 +1512,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       border: '#1e3a8a',
       frameBorder: '#60a5fa',
       innerBorder: '#2563eb',
-      cornerMark: '#38bdf8'
+      cornerMark: '#38bdf8',
+      cardBg: '#0f2744'
     },
     dark: {
       bg: 'bg-black',
@@ -1521,140 +1530,233 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
       border: '#334155',
       frameBorder: '#64748b',
       innerBorder: '#475569',
-      cornerMark: '#38bdf8'
+      cornerMark: '#38bdf8',
+      cardBg: '#0f172a'
     }
   }[theme];
 
-  // Helper render items inside Add Symbol dropdown menu
+  // Helper render items inside Add Symbol dropdown menu (2-column convenient layout with zero scrolling needed)
   const renderAddMenuItems = () => (
-    <>
-      <button
-        onClick={() => {
-          setCanvasClickMode('add');
-          setIsAddMenuOpen(false);
-        }}
-        className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium cursor-pointer"
-      >
-        <Zap className="w-4 h-4 text-amber-500" />
-        <span>⚡ เพิ่มหม้อแปลง (Transformer)</span>
-      </button>
-      <button
-        onClick={() => {
-          setCanvasClickMode('add_switch');
-          setIsAddMenuOpen(false);
-        }}
-        className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium cursor-pointer"
-      >
-        <Power className="w-4 h-4 text-emerald-600" />
-        <span>🔲 เพิ่มสวิตช์ / ABS / Fuse / Recloser</span>
-      </button>
-      <button
-        onClick={() => {
-          setCanvasClickMode('add_annotation');
-          setIsAddMenuOpen(false);
-        }}
-        className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium cursor-pointer"
-      >
-        <Type className="w-4 h-4 text-blue-600" />
-        <span>🔤 เพิ่มข้อความ / ชื่อถนน / สายป้อน</span>
-      </button>
-      <button
-        onClick={() => {
-          setDrawingPoints([]);
-          setCanvasClickMode('draw_line');
-          setIsAddMenuOpen(false);
-        }}
-        className="w-full px-3 py-2 text-left hover:bg-purple-50 dark:hover:bg-purple-950/40 flex items-center gap-2 text-purple-700 dark:text-purple-300 font-medium cursor-pointer"
-      >
-        <PenTool className="w-4 h-4 text-purple-600" />
-        <span>🖊️ วาดเส้นวงจรใหม่ (Pen Tool)</span>
-      </button>
-
-      {/* Landmarks Category */}
-      <div className="border-t border-slate-100 dark:border-slate-700 my-1 pt-1">
-        <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-          <Landmark className="w-3 h-3 text-blue-500" />
-          <span>สัญลักษณ์สถานที่สำคัญ (Landmarks)</span>
+    <div className="flex flex-col gap-2">
+      {/* Header bar with title and dismiss button */}
+      <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-700/80">
+        <div className="flex items-center gap-1.5">
+          <Plus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          <span className="font-bold text-slate-800 dark:text-slate-100 text-[11px]">เลือกสัญลักษณ์เพื่อวางลงบนผัง</span>
         </div>
         <button
-          onClick={() => {
-            setPendingLandmarkType('school');
-            setCanvasClickMode('add_landmark');
-            setIsAddMenuOpen(false);
-          }}
-          className="w-full px-3 py-1.5 text-left hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
+          type="button"
+          onClick={() => setIsAddMenuOpen(false)}
+          className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+          title="ปิดเมนู"
         >
-          <span className="text-sm">🏫</span>
-          <span className="font-medium">โรงเรียน (School)</span>
-        </button>
-        <button
-          onClick={() => {
-            setPendingLandmarkType('temple');
-            setCanvasClickMode('add_landmark');
-            setIsAddMenuOpen(false);
-          }}
-          className="w-full px-3 py-1.5 text-left hover:bg-amber-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
-        >
-          <span className="text-sm">🛕</span>
-          <span className="font-medium">วัด (Wat / Temple)</span>
-        </button>
-        <button
-          onClick={() => {
-            setPendingLandmarkType('hospital');
-            setCanvasClickMode('add_landmark');
-            setIsAddMenuOpen(false);
-          }}
-          className="w-full px-3 py-1.5 text-left hover:bg-red-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
-        >
-          <span className="text-sm">🏥</span>
-          <span className="font-medium">โรงพยาบาล (Hospital)</span>
-        </button>
-        <button
-          onClick={() => {
-            setPendingLandmarkType('government');
-            setCanvasClickMode('add_landmark');
-            setIsAddMenuOpen(false);
-          }}
-          className="w-full px-3 py-1.5 text-left hover:bg-sky-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
-        >
-          <span className="text-sm">🏛️</span>
-          <span className="font-medium">สถานที่ราชการ (Govt Office)</span>
-        </button>
-        <button
-          onClick={() => {
-            setPendingLandmarkType('makro');
-            setCanvasClickMode('add_landmark');
-            setIsAddMenuOpen(false);
-          }}
-          className="w-full px-3 py-1.5 text-left hover:bg-rose-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
-        >
-          <span className="text-sm">🔴</span>
-          <span className="font-medium">แมคโคร (Makro)</span>
-        </button>
-        <button
-          onClick={() => {
-            setPendingLandmarkType('lotus');
-            setCanvasClickMode('add_landmark');
-            setIsAddMenuOpen(false);
-          }}
-          className="w-full px-3 py-1.5 text-left hover:bg-emerald-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
-        >
-          <span className="text-sm">🟢</span>
-          <span className="font-medium">โลตัส (Lotus's)</span>
-        </button>
-        <button
-          onClick={() => {
-            setPendingLandmarkType('seven_eleven');
-            setCanvasClickMode('add_landmark');
-            setIsAddMenuOpen(false);
-          }}
-          className="w-full px-3 py-1.5 text-left hover:bg-orange-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer"
-        >
-          <span className="text-sm">🏪</span>
-          <span className="font-medium">เซเว่น (7-Eleven)</span>
+          <X className="w-3.5 h-3.5" />
         </button>
       </div>
-    </>
+
+      {/* Category 1: Electrical Equipment & Drawing Tools (2 Columns) */}
+      <div>
+        <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+          <Zap className="w-3 h-3 text-amber-500" />
+          <span>อุปกรณ์ไฟฟ้าและเส้นวงจร</span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {/* 1. Transformer */}
+          <button
+            type="button"
+            onClick={() => {
+              setCanvasClickMode('add');
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-2 p-1.5 rounded-lg border border-amber-200/80 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-slate-800 dark:text-slate-100 transition-all text-left cursor-pointer group"
+          >
+            <div className="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform">
+              <Zap className="w-3.5 h-3.5 fill-amber-500/30" />
+            </div>
+            <div className="min-w-0">
+              <div className="font-bold text-[11px] leading-tight truncate">หม้อแปลงไฟฟ้า</div>
+              <div className="text-[9px] text-slate-500 dark:text-slate-400 truncate">กฟภ. / ผู้ใช้ไฟ</div>
+            </div>
+          </button>
+
+          {/* 2. Switches / Cutouts */}
+          <button
+            type="button"
+            onClick={() => {
+              setCanvasClickMode('add_switch');
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-2 p-1.5 rounded-lg border border-emerald-200/80 dark:border-emerald-900/60 bg-emerald-50/60 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-slate-800 dark:text-slate-100 transition-all text-left cursor-pointer group"
+          >
+            <div className="w-6 h-6 rounded-md bg-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform">
+              <Power className="w-3.5 h-3.5" />
+            </div>
+            <div className="min-w-0">
+              <div className="font-bold text-[11px] leading-tight truncate">สวิตช์ / คัทเอาท์</div>
+              <div className="text-[9px] text-slate-500 dark:text-slate-400 truncate">ABS/Fuse/Rec</div>
+            </div>
+          </button>
+
+          {/* 3. Text Label / Road */}
+          <button
+            type="button"
+            onClick={() => {
+              setCanvasClickMode('add_annotation');
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-2 p-1.5 rounded-lg border border-blue-200/80 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-slate-800 dark:text-slate-100 transition-all text-left cursor-pointer group"
+          >
+            <div className="w-6 h-6 rounded-md bg-blue-500/20 flex items-center justify-center shrink-0 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+              <Type className="w-3.5 h-3.5" />
+            </div>
+            <div className="min-w-0">
+              <div className="font-bold text-[11px] leading-tight truncate">ข้อความ / ชื่อถนน</div>
+              <div className="text-[9px] text-slate-500 dark:text-slate-400 truncate">ป้ายกำกับ / สายป้อน</div>
+            </div>
+          </button>
+
+          {/* 4. Draw Line (Pen Tool) */}
+          <button
+            type="button"
+            onClick={() => {
+              setDrawingPoints([]);
+              setCanvasClickMode('draw_line');
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-2 p-1.5 rounded-lg border border-purple-200/80 dark:border-purple-900/60 bg-purple-50/60 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-slate-800 dark:text-slate-100 transition-all text-left cursor-pointer group"
+          >
+            <div className="w-6 h-6 rounded-md bg-purple-500/20 flex items-center justify-center shrink-0 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform">
+              <PenTool className="w-3.5 h-3.5" />
+            </div>
+            <div className="min-w-0">
+              <div className="font-bold text-[11px] leading-tight truncate">วาดเส้นวงจรใหม่</div>
+              <div className="text-[9px] text-slate-500 dark:text-slate-400 truncate">Pen Tool ลากเส้น</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* Category 2: Landmarks (2 Columns Grid - 7 items) */}
+      <div className="border-t border-slate-100 dark:border-slate-700/80 pt-1.5">
+        <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+          <Landmark className="w-3 h-3 text-sky-500" />
+          <span>สัญลักษณ์สถานที่สำคัญ (Landmarks)</span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setPendingLandmarkType('school');
+              setCanvasClickMode('add_landmark');
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200/70 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 transition-colors text-left cursor-pointer group"
+          >
+            <span className="text-sm group-hover:scale-110 transition-transform">🏫</span>
+            <div className="min-w-0">
+              <div className="font-medium text-[11px] truncate leading-tight">โรงเรียน</div>
+              <div className="text-[9px] text-slate-400 truncate">School</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setPendingLandmarkType('temple');
+              setCanvasClickMode('add_landmark');
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200/70 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 transition-colors text-left cursor-pointer group"
+          >
+            <span className="text-sm group-hover:scale-110 transition-transform">🛕</span>
+            <div className="min-w-0">
+              <div className="font-medium text-[11px] truncate leading-tight">วัด</div>
+              <div className="text-[9px] text-slate-400 truncate">Temple / Wat</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setPendingLandmarkType('hospital');
+              setCanvasClickMode('add_landmark');
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200/70 dark:border-slate-700 hover:bg-red-50 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 transition-colors text-left cursor-pointer group"
+          >
+            <span className="text-sm group-hover:scale-110 transition-transform">🏥</span>
+            <div className="min-w-0">
+              <div className="font-medium text-[11px] truncate leading-tight">โรงพยาบาล</div>
+              <div className="text-[9px] text-slate-400 truncate">Hospital / รพ.สต.</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setPendingLandmarkType('government');
+              setCanvasClickMode('add_landmark');
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200/70 dark:border-slate-700 hover:bg-sky-50 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 transition-colors text-left cursor-pointer group"
+          >
+            <span className="text-sm group-hover:scale-110 transition-transform">🏛️</span>
+            <div className="min-w-0">
+              <div className="font-medium text-[11px] truncate leading-tight">สถานที่ราชการ</div>
+              <div className="text-[9px] text-slate-400 truncate">Govt / อบต.</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setPendingLandmarkType('makro');
+              setCanvasClickMode('add_landmark');
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200/70 dark:border-slate-700 hover:bg-rose-50 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 transition-colors text-left cursor-pointer group"
+          >
+            <span className="text-sm group-hover:scale-110 transition-transform">🔴</span>
+            <div className="min-w-0">
+              <div className="font-medium text-[11px] truncate leading-tight">แมคโคร</div>
+              <div className="text-[9px] text-slate-400 truncate">Makro</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setPendingLandmarkType('lotus');
+              setCanvasClickMode('add_landmark');
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200/70 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 transition-colors text-left cursor-pointer group"
+          >
+            <span className="text-sm group-hover:scale-110 transition-transform">🟢</span>
+            <div className="min-w-0">
+              <div className="font-medium text-[11px] truncate leading-tight">โลตัส</div>
+              <div className="text-[9px] text-slate-400 truncate">Lotus's</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setPendingLandmarkType('seven_eleven');
+              setCanvasClickMode('add_landmark');
+              setIsAddMenuOpen(false);
+            }}
+            className="col-span-2 sm:col-span-1 flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200/70 dark:border-slate-700 hover:bg-orange-50 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 transition-colors text-left cursor-pointer group"
+          >
+            <span className="text-sm group-hover:scale-110 transition-transform">🏪</span>
+            <div className="min-w-0">
+              <div className="font-medium text-[11px] truncate leading-tight">เซเว่น</div>
+              <div className="text-[9px] text-slate-400 truncate">7-Eleven</div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 
   return (
@@ -1664,7 +1766,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
         ref={toolbarRef}
         style={{ left: `${toolbarPos.x}px`, top: `${toolbarPos.y}px` }}
         onPointerDown={handleToolbarPointerDown}
-        className={`absolute z-30 ${
+        className={`absolute z-20 ${
           toolbarLayout === 'vertical'
             ? 'flex flex-col items-stretch gap-1.5 w-56 max-h-[calc(100%-16px)] overflow-y-auto custom-scrollbar bg-white/95 dark:bg-slate-800/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl'
             : 'flex flex-wrap items-center gap-1.5 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md px-1.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-md hover:shadow-lg'
@@ -1992,9 +2094,14 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
                   {/* Add Elements Dropdown Menu */}
                   {isAddMenuOpen && (
-                    <div className={`absolute ${
-                      toolbarPos.x > 500 ? 'right-full top-0 mr-2' : 'left-full top-0 ml-2'
-                    } w-60 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs max-h-96 overflow-y-auto`}>
+                    <div 
+                      ref={addMenuRef}
+                      className={`absolute ${
+                        toolbarPos.x > 500 ? 'right-full mr-2' : 'left-full ml-2'
+                      } ${
+                        toolbarPos.y > 280 ? 'bottom-0' : 'top-0'
+                      } w-80 sm:w-[350px] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs max-h-[calc(100vh-60px)] overflow-y-auto`}
+                    >
                       {renderAddMenuItems()}
                     </div>
                   )}
@@ -2309,7 +2416,10 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                     </button>
 
                     {isAddMenuOpen && (
-                      <div className="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs max-h-96 overflow-y-auto">
+                      <div 
+                        ref={addMenuRef}
+                        className="absolute right-0 top-full mt-2 w-80 sm:w-[350px] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs max-h-[calc(100vh-60px)] overflow-y-auto"
+                      >
                         {renderAddMenuItems()}
                       </div>
                     )}
@@ -2899,7 +3009,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           </g>
 
           {/* Feeder Path Lines Layer with Interactive Controls */}
-          {displayData.feederPaths.map(path => {
+          {displayData.feederPaths.map((path, pIdx) => {
             const isMultiSelected = multiSelection.pathIds.includes(path.id);
             const isSelected = selectedPathId === path.id || isMultiSelected;
             const isHovered = hoveredPathId === path.id;
@@ -2909,8 +3019,8 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
             const pDx = isPathBeingDragged ? (multiDragging?.dx || 0) : 0;
             const pDy = isPathBeingDragged ? (multiDragging?.dy || 0) : 0;
 
-            const pointsStr = path.points.map((p, pIdx) => {
-              const isVDrag = draggingVertex && draggingVertex.pathId === path.id && draggingVertex.pointIndex === pIdx;
+            const pointsStr = path.points.map((p, ptIdx) => {
+              const isVDrag = draggingVertex && draggingVertex.pathId === path.id && draggingVertex.pointIndex === ptIdx;
               const vDx = isVDrag ? (draggingVertex?.dx || 0) : 0;
               const vDy = isVDrag ? (draggingVertex?.dy || 0) : 0;
               return `${Math.round(p.x + pDx + vDx)},${Math.round(p.y + pDy + vDy)}`;
@@ -2919,7 +3029,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
             return (
               <g 
-                key={path.id}
+                key={`${path.id || 'path'}-${pIdx}`}
                 onMouseEnter={() => setHoveredPathId(path.id)}
                 onMouseLeave={() => setHoveredPathId(null)}
               >
@@ -3127,7 +3237,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           )}
 
           {/* Feeder / Road Annotation Labels */}
-          {displayData.annotations.map(label => {
+          {displayData.annotations.map((label, aIdx) => {
             const isVertical = label.orientation === 'vertical';
             const isMultiSelected = multiSelection.annotationIds.includes(label.id);
             const isSelected = selectedAnnotationId === label.id || isMultiSelected;
@@ -3223,7 +3333,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
             return (
               <g
-                key={label.id}
+                key={`${label.id || 'ann'}-${aIdx}`}
                 id={`ann-${label.id}`}
                 transform={`translate(${curX}, ${curY})`}
                 className={`${
@@ -3557,7 +3667,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           })}
 
           {/* Switches and Cutouts Layer */}
-          {displayData.switches.map(sw => {
+          {displayData.switches.map((sw, swIdx) => {
             const isTag = sw.type === 'FEEDER_TAG';
             const isMultiSelected = multiSelection.switchIds.includes(sw.id);
             const isBeingDragged = multiDragging?.items.switches.some(x => x.id === sw.id);
@@ -3568,7 +3678,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
             return (
               <g
-                key={sw.id}
+                key={`${sw.id || 'sw'}-${swIdx}`}
                 transform={`translate(${curRenderX}, ${curRenderY}) rotate(${sw.rotation || 0}) scale(${symbolScale})`}
                 className={
                   isDraggable ? (isBeingDragged ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'
@@ -3717,7 +3827,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
           })}
 
           {/* Transformer Nodes Layer */}
-          {displayData.transformers.map(t => {
+          {displayData.transformers.map((t, trIdx) => {
             const isMultiSelected = multiSelection.transformerIds.includes(t.id);
             const isSelected = selectedId === t.id || isMultiSelected;
             const isHovered = hoveredTransformer?.id === t.id;
@@ -3794,7 +3904,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
 
             return (
               <g
-                key={t.id}
+                key={`${t.id || 'tr'}-${trIdx}`}
                 id={`tr-node-${t.id}`}
                 transform={`translate(${curRenderX}, ${curRenderY}) scale(${symbolScale})`}
                 className={
@@ -4174,7 +4284,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
                                 }}
                                 onMouseDown={(e) => e.stopPropagation()}
                                 onPointerDown={(e) => e.stopPropagation()}
-                                touchAction="none"
+                                style={{ touchAction: 'none' }}
                                 onTouchStart={(e) => e.stopPropagation()}
                               >
                                 <rect

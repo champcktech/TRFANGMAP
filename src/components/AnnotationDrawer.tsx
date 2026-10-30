@@ -187,8 +187,8 @@ export const AnnotationDrawer: React.FC<AnnotationDrawerProps> = ({
                 key={dir.id}
                 type="button"
                 onClick={() => {
-                  const updatedOrientation = (dir.id === 'top' || dir.id === 'bottom') ? 'vertical' : 'horizontal';
-                  const updated = {
+                  const updatedOrientation: 'vertical' | 'horizontal' = (dir.id === 'top' || dir.id === 'bottom') ? 'vertical' : 'horizontal';
+                  const updated: AnnotationLabel = {
                     ...formData,
                     textPosition: dir.id,
                     orientation: updatedOrientation

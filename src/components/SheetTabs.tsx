@@ -67,7 +67,7 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
   };
 
   return (
-    <div className="bg-slate-100/95 dark:bg-slate-800/95 border-b border-slate-200 dark:border-slate-700/80 px-2 py-1 flex items-center justify-between gap-1.5 text-xs select-none min-h-[36px]">
+    <div className="bg-slate-100/95 dark:bg-slate-800/95 border-b border-slate-200 dark:border-slate-700/80 px-2 py-1 flex items-center justify-between gap-1.5 text-xs select-none min-h-[36px] relative z-30">
       {/* Left: Sheet Label & Navigation Arrows */}
       <div className="flex items-center gap-1 min-w-0 flex-1">
         <div className="flex items-center gap-1 text-slate-600 dark:text-slate-300 font-bold shrink-0 pr-1.5 border-r border-slate-300 dark:border-slate-700 mr-0.5">

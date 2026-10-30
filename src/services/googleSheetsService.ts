@@ -409,6 +409,7 @@ export function parseCsvToTransformers(csvText: string): Transformer[] {
   }
 
   const transformers: Transformer[] = [];
+  const seenIds = new Set<string>();
 
   for (let i = startDataRow; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
@@ -520,10 +521,18 @@ export function parseCsvToTransformers(csvText: string): Transformer[] {
       }
     }
 
+    let rawAssignedId = idIdx >= 0 && values[idIdx] && values[idIdx].trim().length > 0
+      ? values[idIdx].trim()
+      : `tr-imported-${i + 1}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+    
+    // Ensure uniqueness across imported batch
+    if (seenIds.has(rawAssignedId)) {
+      rawAssignedId = `${rawAssignedId}-dup-${i + 1}-${Math.random().toString(36).substring(2, 6)}`;
+    }
+    seenIds.add(rawAssignedId);
+
     transformers.push({
-      id: idIdx >= 0 && values[idIdx] && values[idIdx].trim().length > 0
-        ? values[idIdx].trim()
-        : `tr-imported-${i + 1}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+      id: rawAssignedId,
       peaNo,
       name,
       kva,

@@ -355,7 +355,7 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
                 const hasGps = isValidLatLng(t.latitude, t.longitude);
                 return (
                   <tr 
-                    key={t.id} 
+                    key={`${t.id || 'tr'}-${idx}`} 
                     className={`hover:bg-blue-50/50 dark:hover:bg-slate-800/60 transition-colors ${
                       isSelected ? 'bg-blue-50/70 dark:bg-blue-900/20' : idx % 2 === 1 ? 'bg-slate-50/40 dark:bg-slate-800/20' : ''
                     }`}
