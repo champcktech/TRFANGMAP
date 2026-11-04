@@ -24,6 +24,22 @@ export interface Transformer {
   status?: 'active' | 'maintenance' | 'inactive';
 }
 
+/**
+ * คำนวณจำนวนเครื่องหม้อแปลง โดยหากเป็นหม้อแปลง 1 เฟส 2 เครื่อง (2x1P) จะนับเป็น 2 เครื่อง
+ */
+export function getTransformerUnitCount(t?: { phase?: string } | null): number {
+  if (!t) return 0;
+  return t.phase === '2x1P' ? 2 : 1;
+}
+
+/**
+ * คำนวณจำนวนเครื่องหม้อแปลงรวมทั้งหมดในรายการ โดยหม้อแปลง 1 เฟส 2 เครื่อง (2x1P) จะนับเป็น 2 เครื่อง
+ */
+export function countTransformerUnits(transformers?: { phase?: string }[] | null): number {
+  if (!transformers || transformers.length === 0) return 0;
+  return transformers.reduce((sum, t) => sum + (t.phase === '2x1P' ? 2 : 1), 0);
+}
+
 export type SwitchType = 'ABS' | 'FUSE' | 'RECLOSER' | 'SECTIONALIZER' | 'DISCONNECT' | 'FEEDER_TAG' | 'SUBSTATION' | 'CROSS_BOX';
 
 export interface SwitchNode {

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Transformer, SwitchNode, FeederPath, AnnotationLabel, AnnotationType } from '../types';
+import { Transformer, SwitchNode, FeederPath, AnnotationLabel, AnnotationType, countTransformerUnits } from '../types';
 import { 
   transformDataToLandscape, 
   transformPointToPortrait,
@@ -461,13 +461,13 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
     };
   }, [canvasOrientation, transformers, switches, feederPaths, annotations]);
 
-  // นับจำนวนหม้อแปลงแยกประเภท กฟภ. และ ผู้ใช้ไฟ
+  // นับจำนวนหม้อแปลงแยกประเภท กฟภ. และ ผู้ใช้ไฟ (หม้อแปลง 1 เฟส 2 เครื่อง [2x1P] นับเป็น 2 เครื่อง)
   const publicCount = useMemo(() => {
-    return displayData.transformers.filter(t => t.type === 'public').length;
+    return countTransformerUnits(displayData.transformers.filter(t => t.type === 'public'));
   }, [displayData.transformers]);
 
   const privateCount = useMemo(() => {
-    return displayData.transformers.filter(t => t.type === 'private').length;
+    return countTransformerUnits(displayData.transformers.filter(t => t.type === 'private'));
   }, [displayData.transformers]);
 
   // ตัวกรองความสามารถในการมองเห็นของหม้อแปลง (All, Public Only, Private Only, None)
@@ -2963,7 +2963,7 @@ export const TransformerCanvas: React.FC<TransformerCanvasProps> = ({
               
               {/* Row 2 */}
               <text x="12" y="79" fill={themeStyles.textSecondary} fontSize="9.5" fontFamily="sans-serif">
-                หม้อแปลง: <tspan fill={themeStyles.textPrimary} fontWeight="bold">{displayData.transformers.length} เครื่อง</tspan>
+                หม้อแปลง: <tspan fill={themeStyles.textPrimary} fontWeight="bold">{publicCount + privateCount} เครื่อง</tspan>
               </text>
               <text x="182" y="79" fill={themeStyles.textSecondary} fontSize="9.5" fontFamily="sans-serif">
                 พิกัดผัง: <tspan fill={themeStyles.textPrimary} fontWeight="bold">2079 × 1470 px</tspan>

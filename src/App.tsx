@@ -7,7 +7,8 @@ import {
   AnnotationType,
   GoogleSheetConfig,
   DiagramSheet,
-  TransformerDraft
+  TransformerDraft,
+  countTransformerUnits
 } from './types';
 import { 
   INITIAL_TRANSFORMERS, 
@@ -978,6 +979,10 @@ export default function App() {
     return transformers.reduce((sum, t) => sum + (t.kva || 0), 0);
   }, [transformers]);
 
+  const totalTransformerUnits = useMemo(() => {
+    return countTransformerUnits(transformers);
+  }, [transformers]);
+
   // --- Sheet Operations ---
   const handleSelectSheet = (id: string) => {
     setActiveSheetId(id);
@@ -1700,7 +1705,7 @@ export default function App() {
         theme={theme}
         isDraggable={isDraggable}
         isReadOnly={isReadOnly}
-        transformerCount={transformers.length}
+        transformerCount={totalTransformerUnits}
         totalKva={totalKva}
         filterType={filterType}
         onFilterTypeChange={setFilterType}
@@ -2094,7 +2099,7 @@ export default function App() {
         switches={switches}
         feederPaths={feederPaths}
         annotations={annotations}
-        transformerCount={transformers.length}
+        transformerCount={totalTransformerUnits}
         totalKva={totalKva}
         sheetTitle={activeSheet.title}
         sheetNo={activeSheet.sheetNo}

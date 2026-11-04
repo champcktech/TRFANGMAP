@@ -1734,7 +1734,7 @@ export function scanLocalStorageForBackups(): { key: string; sheetCount: number;
             let tfCount = 0;
             parsed.forEach((s: any) => {
               if (s && Array.isArray(s.transformers)) {
-                tfCount += s.transformers.length;
+                tfCount += s.transformers.reduce((sum: number, t: any) => sum + (t?.phase === '2x1P' ? 2 : 1), 0);
               }
             });
             if (tfCount > 0) {
@@ -1750,7 +1750,7 @@ export function scanLocalStorageForBackups(): { key: string; sheetCount: number;
             results.push({
               key,
               sheetCount: 1,
-              transformerCount: parsed.length,
+              transformerCount: parsed.reduce((sum: number, t: any) => sum + (t?.phase === '2x1P' ? 2 : 1), 0),
               data: parsed
             });
           }

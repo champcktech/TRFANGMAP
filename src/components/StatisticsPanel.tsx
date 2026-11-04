@@ -1,5 +1,5 @@
 import React from 'react';
-import { Transformer, SwitchNode } from '../types';
+import { Transformer, SwitchNode, countTransformerUnits } from '../types';
 import { 
   Zap, 
   Layers, 
@@ -25,28 +25,32 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
   onSelectKvaFilter,
   onSelectTypeFilter
 }) => {
+  const totalTransformerUnits = countTransformerUnits(transformers);
   const totalKva = transformers.reduce((sum, t) => sum + (t.kva || 0), 0);
-  const publicCount = transformers.filter(t => t.type === 'public').length;
-  const privateCount = transformers.filter(t => t.type === 'private').length;
+  const publicCount = countTransformerUnits(transformers.filter(t => t.type === 'public'));
+  const privateCount = countTransformerUnits(transformers.filter(t => t.type === 'private'));
   const publicKva = transformers.filter(t => t.type === 'public').reduce((sum, t) => sum + (t.kva || 0), 0);
   const privateKva = transformers.filter(t => t.type === 'private').reduce((sum, t) => sum + (t.kva || 0), 0);
 
   // Group by Phase (3 Phase vs 1 Phase 1 Unit vs 1 Phase 2 Units)
+  // หมายเหตุ: หม้อแปลง 1 เฟส 2 เครื่อง (2x1P) นับเป็น 2 เครื่อง
   const threePhaseCount = transformers.filter(t => (t.phase || '3P') === '3P').length;
   const singlePhaseCount = transformers.filter(t => t.phase === '1P').length;
-  const twoUnitSinglePhaseCount = transformers.filter(t => t.phase === '2x1P').length;
+  const twoUnitSinglePhaseSpots = transformers.filter(t => t.phase === '2x1P').length;
+  const twoUnitSinglePhaseCount = twoUnitSinglePhaseSpots * 2;
   const threePhaseKva = transformers.filter(t => (t.phase || '3P') === '3P').reduce((sum, t) => sum + (t.kva || 0), 0);
   const singlePhaseKva = transformers.filter(t => t.phase === '1P').reduce((sum, t) => sum + (t.kva || 0), 0);
   const twoUnitSinglePhaseKva = transformers.filter(t => t.phase === '2x1P').reduce((sum, t) => sum + (t.kva || 0), 0);
 
-  // Group by kVA
+  // Group by kVA (นับ 1 เฟส 2 เครื่องเป็น 2 เครื่อง)
   const kvaDistribution: { [key: number]: { count: number; totalKva: number } } = {};
   transformers.forEach(t => {
     const k = t.kva || 50;
+    const units = t.phase === '2x1P' ? 2 : 1;
     if (!kvaDistribution[k]) {
       kvaDistribution[k] = { count: 0, totalKva: 0 };
     }
-    kvaDistribution[k].count += 1;
+    kvaDistribution[k].count += units;
     kvaDistribution[k].totalKva += k;
   });
 
@@ -54,14 +58,15 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
     .map(Number)
     .sort((a, b) => a - b);
 
-  // Group by branch
+  // Group by branch (นับ 1 เฟส 2 เครื่องเป็น 2 เครื่อง)
   const branchDistribution: { [key: string]: { count: number; totalKva: number } } = {};
   transformers.forEach(t => {
     const b = t.branch || 'สายเมนหลัก';
+    const units = t.phase === '2x1P' ? 2 : 1;
     if (!branchDistribution[b]) {
       branchDistribution[b] = { count: 0, totalKva: 0 };
     }
-    branchDistribution[b].count += 1;
+    branchDistribution[b].count += units;
     branchDistribution[b].totalKva += (t.kva || 0);
   });
 
@@ -94,7 +99,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
             <span className="text-sm font-normal ml-1">kVA</span>
           </div>
           <div className="text-[11px] opacity-75 mt-2">
-            เฉลี่ย {(transformers.length ? Math.round(totalKva / transformers.length) : 0)} kVA ต่อเครื่อง
+            เฉลี่ย {(totalTransformerUnits ? Math.round(totalKva / totalTransformerUnits) : 0)} kVA ต่อเครื่อง
           </div>
         </div>
 
@@ -105,7 +110,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
             <Layers className="w-5 h-5 text-blue-500" />
           </div>
           <div className="text-3xl font-extrabold text-slate-900 dark:text-white">
-            {transformers.length}
+            {totalTransformerUnits}
             <span className="text-sm font-normal text-slate-500 ml-1">เครื่อง</span>
           </div>
           <div className="text-[11px] text-slate-400 mt-2">
@@ -191,7 +196,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
                 {threePhaseCount} <span className="text-xs font-normal text-slate-500">เครื่อง</span>
               </div>
               <div className="text-[10px] text-slate-400">
-                {Math.round((threePhaseCount / (transformers.length || 1)) * 100)}%
+                {Math.round((threePhaseCount / (totalTransformerUnits || 1)) * 100)}%
               </div>
             </div>
           </div>
@@ -223,7 +228,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
                 {singlePhaseCount} <span className="text-xs font-normal text-slate-500">เครื่อง</span>
               </div>
               <div className="text-[10px] text-slate-400">
-                {Math.round((singlePhaseCount / (transformers.length || 1)) * 100)}%
+                {Math.round((singlePhaseCount / (totalTransformerUnits || 1)) * 100)}%
               </div>
             </div>
           </div>
@@ -253,10 +258,10 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
             </div>
             <div className="text-right shrink-0">
               <div className="text-xl font-extrabold text-purple-600 dark:text-purple-400">
-                {twoUnitSinglePhaseCount} <span className="text-xs font-normal text-slate-500">จุด</span>
+                {twoUnitSinglePhaseCount} <span className="text-xs font-normal text-slate-500">เครื่อง</span>
               </div>
               <div className="text-[10px] text-slate-400">
-                {Math.round((twoUnitSinglePhaseCount / (transformers.length || 1)) * 100)}%
+                ({twoUnitSinglePhaseSpots} จุด • {Math.round((twoUnitSinglePhaseCount / (totalTransformerUnits || 1)) * 100)}%)
               </div>
             </div>
           </div>
@@ -278,7 +283,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
           <div className="space-y-3">
             {sortedKvaKeys.map(k => {
               const data = kvaDistribution[k];
-              const pct = Math.round((data.count / (transformers.length || 1)) * 100);
+              const pct = Math.round((data.count / (totalTransformerUnits || 1)) * 100);
               return (
                 <div
                   key={k}

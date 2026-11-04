@@ -34,7 +34,7 @@ import {
   AlertCircle,
   Cloud
 } from 'lucide-react';
-import { GoogleSheetConfig, DiagramSheet, Transformer, AnnotationLabel } from '../types';
+import { GoogleSheetConfig, DiagramSheet, Transformer, AnnotationLabel, countTransformerUnits } from '../types';
 
 interface NavbarProps {
   currentView: 'canvas' | 'table' | 'stats';
@@ -139,9 +139,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     return sheets.find(s => s.id === activeSheetId) || sheets[0];
   }, [sheets, activeSheetId]);
 
-  const activeSheetTfsCount = activeSheetObj?.transformers?.length ?? transformerCount;
+  const activeSheetTfsCount = activeSheetObj?.transformers ? countTransformerUnits(activeSheetObj.transformers) : transformerCount;
   const allSheetsTfsTotal = useMemo(() => {
-    return sheets.reduce((sum, s) => sum + (s.transformers?.length || 0), 0);
+    return sheets.reduce((sum, s) => sum + countTransformerUnits(s.transformers), 0);
   }, [sheets]);
 
   // Close search popover & filter popover & save menu on outside click
@@ -180,8 +180,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const { publicCount, privateCount } = useMemo(() => {
     const list = activeSheetObj?.transformers || [];
-    const pub = list.filter(t => t.type === 'public').length;
-    const priv = list.filter(t => t.type === 'private').length;
+    const pub = countTransformerUnits(list.filter(t => t.type === 'public'));
+    const priv = countTransformerUnits(list.filter(t => t.type === 'private'));
     return { publicCount: pub, privateCount: priv };
   }, [activeSheetObj]);
 
@@ -1055,7 +1055,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {sheets.map((sh, idx) => {
                   const isSelected = selectedSheetIds.includes(sh.id);
                   const isCurrent = sh.id === activeSheetId;
-                  const tfsCount = sh.transformers?.length || 0;
+                  const tfsCount = countTransformerUnits(sh.transformers);
                   return (
                     <label
                       key={sh.id}

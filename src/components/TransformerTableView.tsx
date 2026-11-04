@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Transformer, TransformerType } from '../types';
+import { Transformer, TransformerType, countTransformerUnits } from '../types';
 import { 
   Search, 
   Filter, 
@@ -505,7 +505,7 @@ export const TransformerTableView: React.FC<TransformerTableViewProps> = ({
       {/* Table Footer Stats */}
       <div className="p-3 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs text-slate-500">
         <div>
-          แสดง <strong>{filteredTransformers.length}</strong> จากทั้งหมด <strong>{transformers.length}</strong> รายการหม้อแปลง
+          แสดง <strong>{countTransformerUnits(filteredTransformers)}</strong> เครื่อง ({filteredTransformers.length} จุด) จากทั้งหมด <strong>{countTransformerUnits(transformers)}</strong> เครื่อง ({transformers.length} จุด)
         </div>
         <div className="flex items-center gap-4">
           <div>
