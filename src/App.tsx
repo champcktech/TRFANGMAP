@@ -1734,7 +1734,7 @@ export default function App() {
         pendingDraftsCount={pendingDraftsCount}
         onOpenDraftApprovalModal={() => setIsDraftApprovalModalOpen(true)}
         onOpenProposeDraft={() => handleOpenProposeCreateDraft()}
-        onOpenRecoveryModal={() => setIsRecoveryModalOpen(true)}
+        onOpenRecoveryModal={isReadOnly ? undefined : () => setIsRecoveryModalOpen(true)}
         isSavingToCloud={isSavingToCloud}
         lastSavedCloudTime={lastSavedCloudTime}
         cloudSyncError={cloudSyncError}
@@ -1742,7 +1742,7 @@ export default function App() {
       />
 
       {/* Transformers Status Banner */}
-      {totalAllTransformers === 0 && (
+      {!isReadOnly && totalAllTransformers === 0 && (
         <div className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700 dark:text-slate-300 animate-in fade-in duration-200">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
@@ -2187,21 +2187,23 @@ export default function App() {
       />
 
       {/* Emergency Data Recovery Modal */}
-      <DataRecoveryModal
-        isOpen={isRecoveryModalOpen}
-        onClose={() => setIsRecoveryModalOpen(false)}
-        currentSheets={sheets}
-        onRestoreSheets={(restored) => {
-          setSheets(restored);
-          try {
-            localStorage.setItem(STORAGE_KEY_SHEETS, JSON.stringify(restored));
-          } catch {}
-          if (restored[0]) {
-            setActiveSheetId(restored[0].id);
-          }
-        }}
-        showToast={showToast}
-      />
+      {!isReadOnly && (
+        <DataRecoveryModal
+          isOpen={isRecoveryModalOpen}
+          onClose={() => setIsRecoveryModalOpen(false)}
+          currentSheets={sheets}
+          onRestoreSheets={(restored) => {
+            setSheets(restored);
+            try {
+              localStorage.setItem(STORAGE_KEY_SHEETS, JSON.stringify(restored));
+            } catch {}
+            if (restored[0]) {
+              setActiveSheetId(restored[0].id);
+            }
+          }}
+          showToast={showToast}
+        />
+      )}
 
       {/* Global In-App Confirmation Modal */}
       <ConfirmModal

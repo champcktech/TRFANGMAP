@@ -951,7 +951,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
 
         {/* Data Recovery Center Button */}
-        {onOpenRecoveryModal && (
+        {!isReadOnly && onOpenRecoveryModal && (
           <button
             id="btn-open-recovery"
             onClick={onOpenRecoveryModal}
