@@ -223,6 +223,55 @@ export function withTimeout<T>(
   ]);
 }
 
+const knownCloudSheetDocIds = new Set<string>();
+
+/**
+ * Saves a single sheet document to Firestore, properly distinguishing create (sets createdAt + updatedAt)
+ * from update (updates only mutable fields + updatedAt, preserving existing createdAt per firestore.rules).
+ */
+async function saveOneSheetDoc(sheet: DiagramSheet, index: number): Promise<void> {
+  const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${sheet.id}`, index);
+  const docRef = doc(db, 'sheets', docId);
+  const baseData = buildValidatedSheetPayload(sheet);
+
+  let docExists = knownCloudSheetDocIds.has(docId);
+  if (!docExists) {
+    try {
+      const snap = await withTimeout(getDoc(docRef), 5000);
+      docExists = snap.exists();
+      if (docExists) {
+        knownCloudSheetDocIds.add(docId);
+      }
+    } catch {
+      // Proceed to write attempt; Firestore write will surface connectivity/permission errors
+    }
+  }
+
+  if (!docExists) {
+    await withTimeout(
+      setDoc(docRef, {
+        ...baseData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }),
+      5000
+    );
+    knownCloudSheetDocIds.add(docId);
+  } else {
+    await withTimeout(
+      setDoc(
+        docRef,
+        {
+          ...baseData,
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      ),
+      5000
+    );
+  }
+}
+
 /**
  * Saves all diagram sheets to Firestore under /sheets/{sheetId} in the shared workspace (no login required)
  */
@@ -241,21 +290,7 @@ export async function saveSheetsToCloudFirestore(
     // 1. Test write with the first sheet first to check connectivity & quota without hammering Firestore
     const firstSheet = sheets[0];
     if (firstSheet) {
-      const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${firstSheet.id}`, 0);
-      const docRef = doc(db, 'sheets', docId);
-      const baseData = buildValidatedSheetPayload(firstSheet);
-
-      await withTimeout(
-        setDoc(
-          docRef,
-          {
-            ...baseData,
-            updatedAt: serverTimestamp()
-          },
-          { merge: true }
-        ),
-        5000
-      );
+      await saveOneSheetDoc(firstSheet, 0);
       savedCount++;
       // If the write succeeded, clear any previous quota exhausted state
       resetQuotaExhausted();
@@ -264,32 +299,24 @@ export async function saveSheetsToCloudFirestore(
     // 2. Process remaining sheets in parallel
     if (sheets.length > 1) {
       const remainingPromises = sheets.slice(1).map(async (sheet, i) => {
-        const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${sheet.id}`, i + 1);
-        const docRef = doc(db, 'sheets', docId);
-        const baseData = buildValidatedSheetPayload(sheet);
-
-        await withTimeout(
-          setDoc(
-            docRef,
-            {
-              ...baseData,
-              updatedAt: serverTimestamp()
-            },
-            { merge: true }
-          ),
-          5000
-        );
+        await saveOneSheetDoc(sheet, i + 1);
         return true;
       });
 
       const results = await Promise.allSettled(remainingPromises);
+      let firstNonQuotaError: any = null;
       for (const res of results) {
         if (res.status === 'fulfilled') {
           savedCount++;
         } else if (isQuotaError(res.reason)) {
           recordQuotaExhausted();
           throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบบันทึกข้อมูลทั้งหมดลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
+        } else if (!firstNonQuotaError) {
+          firstNonQuotaError = res.reason;
         }
+      }
+      if (firstNonQuotaError) {
+        throw firstNonQuotaError;
       }
     }
   } catch (err: any) {
@@ -315,22 +342,8 @@ export async function saveSingleSheetToCloudFirestore(
     throw new Error('โควตาการเขียนของ Firebase ประจำวันเต็ม (Quota exceeded) ระบบบันทึกข้อมูลหน้านี้ลงในเครื่อง (LocalStorage) เรียบร้อยแล้ว');
   }
 
-  const docId = sanitizeSheetId(`${SHARED_WORKSPACE_ID}_${sheet.id}`, 0);
-  const docRef = doc(db, 'sheets', docId);
-  const baseData = buildValidatedSheetPayload(sheet);
-
   try {
-    await withTimeout(
-      setDoc(
-        docRef,
-        {
-          ...baseData,
-          updatedAt: serverTimestamp()
-        },
-        { merge: true }
-      ),
-      5000
-    );
+    await saveOneSheetDoc(sheet, 0);
     resetQuotaExhausted();
   } catch (err: any) {
     if (isQuotaError(err)) {
@@ -366,6 +379,7 @@ export async function fetchSheetsFromCloudFirestore(): Promise<DiagramSheet[]> {
 
     const prefix = `${SHARED_WORKSPACE_ID}_`;
     const result: DiagramSheet[] = snapshot.docs.map((docSnap) => {
+      knownCloudSheetDocIds.add(docSnap.id);
       const data = docSnap.data();
       const rawId = docSnap.id.startsWith(prefix) ? docSnap.id.slice(prefix.length) : docSnap.id;
       return {
@@ -412,6 +426,7 @@ export function subscribeToCloudSheets(
     (snapshot) => {
       if (snapshot.empty) return;
       const loaded: DiagramSheet[] = snapshot.docs.map((docSnap) => {
+        knownCloudSheetDocIds.add(docSnap.id);
         const data = docSnap.data();
         const rawId = docSnap.id.startsWith(prefix) ? docSnap.id.slice(prefix.length) : docSnap.id;
         return {
@@ -454,6 +469,7 @@ export async function deleteSheetFromCloudFirestore(sheetId: string): Promise<vo
   const path = `sheets/${docId}`;
   try {
     await deleteDoc(doc(db, 'sheets', docId));
+    knownCloudSheetDocIds.delete(docId);
   } catch (error) {
     if (isQuotaError(error)) {
       recordQuotaExhausted();

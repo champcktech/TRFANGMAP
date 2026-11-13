@@ -49,6 +49,7 @@ import {
   saveSelectedSheetsToCloudFirestore,
   fetchSheetsFromCloudFirestore,
   subscribeToCloudSheets,
+  deleteSheetFromCloudFirestore,
   signOutFromCloud,
   isQuotaError,
   isCloudWriteQuotaExhausted,
@@ -57,6 +58,24 @@ import {
   subscribeToTransformerDrafts,
   approveTransformerDraft
 } from './services/firebaseDbService';
+
+function serializeSingleSheetComparable(sheet: DiagramSheet): string {
+  return JSON.stringify({
+    ...sheet,
+    createdAt: '',
+    updatedAt: ''
+  });
+}
+
+function serializeSheetsComparable(list: DiagramSheet[]): string {
+  return JSON.stringify(
+    list.map(s => ({
+      ...s,
+      createdAt: '',
+      updatedAt: ''
+    }))
+  );
+}
 
 const STORAGE_KEY_SHEETS = 'pea_sld_all_sheets_v8_cloud_authoritative';
 const STORAGE_KEY_ACTIVE_SHEET_ID = 'pea_sld_active_sheet_id_v8';
@@ -612,7 +631,7 @@ export default function App() {
         setLastSavedCloudTime(nowStr);
         setCloudSyncError(null);
         hasUserEditedRef.current = false;
-        lastSavedSheetsJsonRef.current = sheetsJson;
+        updateLastSavedSnapshotRefs(sheets);
         setSheetConfig(prev => ({
           ...prev,
           lastSyncedAt: nowStr,
@@ -632,7 +651,7 @@ export default function App() {
         setLastSavedCloudTime(nowStr);
         setCloudSyncError(null);
         hasUserEditedRef.current = false;
-        lastSavedSheetsJsonRef.current = sheetsJson;
+        updateLastSavedSnapshotRefs(sheets);
         setSheetConfig(prev => ({
           ...prev,
           lastSyncedAt: nowStr,
@@ -647,7 +666,7 @@ export default function App() {
         setLastSavedCloudTime(nowStr);
         setCloudSyncError(null);
         hasUserEditedRef.current = false;
-        lastSavedSheetsJsonRef.current = sheetsJson;
+        updateLastSavedSnapshotRefs(sheets);
         setSheetConfig(prev => ({
           ...prev,
           lastSyncedAt: nowStr,
@@ -662,7 +681,7 @@ export default function App() {
         recordQuotaExhausted();
       }
       hasUserEditedRef.current = false;
-      lastSavedSheetsJsonRef.current = sheetsJson;
+      updateLastSavedSnapshotRefs(sheets);
       setLastSavedCloudTime(nowStr);
 
       const msg = isQuota 
@@ -708,7 +727,7 @@ export default function App() {
 
     const updatedJson = JSON.stringify(updated);
     hasUserEditedRef.current = true;
-    lastSavedSheetsJsonRef.current = updatedJson;
+    updateLastSavedSnapshotRefs(updated);
     setSheets(updated);
     try {
       await saveSheetsToCloudFirestore(updated);
@@ -724,7 +743,7 @@ export default function App() {
     }));
     const emptyJson = JSON.stringify(emptySheets);
     hasUserEditedRef.current = true;
-    lastSavedSheetsJsonRef.current = emptyJson;
+    updateLastSavedSnapshotRefs(emptySheets);
     setSheets(emptySheets);
     setSelectedTransformer(null);
     try {
@@ -780,8 +799,18 @@ export default function App() {
 
   // Live Synchronization with Firebase Firestore as Primary Source of Truth (SSOT)
   const lastSavedSheetsJsonRef = useRef<string>('');
+  const lastSavedSheetComparableMapRef = useRef<Map<string, string>>(new Map());
   const isCloudSyncingRef = useRef<boolean>(false);
   const quotaExceededToastShownRef = useRef<boolean>(false);
+
+  const updateLastSavedSnapshotRefs = useCallback((list: DiagramSheet[]) => {
+    lastSavedSheetsJsonRef.current = serializeSheetsComparable(list);
+    const nextMap = new Map<string, string>();
+    for (const s of list) {
+      nextMap.set(s.id, serializeSingleSheetComparable(s));
+    }
+    lastSavedSheetComparableMapRef.current = nextMap;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -790,7 +819,7 @@ export default function App() {
     async function loadPrimaryFromFirebase() {
       try {
         const cloudSheets = await fetchSheetsFromCloudFirestore();
-        if (!isMounted) return;
+        if (!isMounted || hasUserEditedRef.current) return;
 
         if (cloudSheets && cloudSheets.length > 0) {
           // Check local sheets in localStorage to prevent wiping offline or local edits
@@ -824,7 +853,7 @@ export default function App() {
 
           const finalSheets = sanitizeSheetsUniqueIds(hasLocalKeep ? mergedSheets : cloudSheets);
           const finalJson = JSON.stringify(finalSheets);
-          lastSavedSheetsJsonRef.current = finalJson;
+          updateLastSavedSnapshotRefs(finalSheets);
           setSheets(finalSheets);
           try {
             localStorage.setItem(STORAGE_KEY_SHEETS, finalJson);
@@ -860,15 +889,18 @@ export default function App() {
     const unsubscribeCloud = subscribeToCloudSheets(
       (rawRemoteSheets) => {
         if (!isMounted || !rawRemoteSheets || rawRemoteSheets.length === 0) return;
-        const remoteSheets = sanitizeSheetsUniqueIds(rawRemoteSheets);
-        const remoteJson = JSON.stringify(remoteSheets);
+        // CRITICAL: Never let an incoming snapshot overwrite unsaved local edits or an active sync
+        if (hasUserEditedRef.current || isCloudSyncingRef.current) return;
 
-        // Only update local state if remote changed compared to our last saved version
-        if (remoteJson !== lastSavedSheetsJsonRef.current) {
-          lastSavedSheetsJsonRef.current = remoteJson;
+        const remoteSheets = sanitizeSheetsUniqueIds(rawRemoteSheets);
+        const remoteComparable = serializeSheetsComparable(remoteSheets);
+
+        // Only update local state if remote content actually changed compared to our last saved version
+        if (remoteComparable !== lastSavedSheetsJsonRef.current) {
+          updateLastSavedSnapshotRefs(remoteSheets);
           setSheets(remoteSheets);
           try {
-            localStorage.setItem(STORAGE_KEY_SHEETS, remoteJson);
+            localStorage.setItem(STORAGE_KEY_SHEETS, JSON.stringify(remoteSheets));
           } catch {}
           setSheetConfig(prev => ({
             ...prev,
@@ -887,7 +919,7 @@ export default function App() {
       isMounted = false;
       unsubscribeCloud();
     };
-  }, []);
+  }, [updateLastSavedSnapshotRefs]);
 
   // Auto-save any local edits directly to Firebase Firestore as Primary Database
   useEffect(() => {
@@ -896,8 +928,10 @@ export default function App() {
     if (!isCloudAutoSync || !isCloudInitialLoaded || isReadOnly || !hasUserEditedRef.current) return;
 
     // Check if sheets data has actually changed compared to the last saved payload
+    const currentComparable = serializeSheetsComparable(sheets);
+    if (currentComparable === lastSavedSheetsJsonRef.current) return;
+
     const currentJson = JSON.stringify(sheets);
-    if (currentJson === lastSavedSheetsJsonRef.current) return;
 
     const timer = setTimeout(async () => {
       if (isCloudSyncingRef.current) return;
@@ -909,7 +943,7 @@ export default function App() {
 
       // 2. Check if Firestore write quota is already exhausted: if so, keep local and don't spam backend!
       if (isCloudWriteQuotaExhausted()) {
-        lastSavedSheetsJsonRef.current = currentJson;
+        updateLastSavedSnapshotRefs(sheets);
         hasUserEditedRef.current = false;
         const nowStr = new Date().toLocaleTimeString('th-TH');
         setLastSavedCloudTime(nowStr);
@@ -923,11 +957,22 @@ export default function App() {
         return;
       }
 
+      // Only write sheets that are new or actually modified
+      const changedSheets = sheets.filter(
+        s => lastSavedSheetComparableMapRef.current.get(s.id) !== serializeSingleSheetComparable(s)
+      );
+
+      if (changedSheets.length === 0) {
+        updateLastSavedSnapshotRefs(sheets);
+        hasUserEditedRef.current = false;
+        return;
+      }
+
       isCloudSyncingRef.current = true;
       setIsSavingToCloud(true);
       try {
-        await saveSheetsToCloudFirestore(sheets);
-        lastSavedSheetsJsonRef.current = currentJson;
+        await saveSheetsToCloudFirestore(changedSheets);
+        updateLastSavedSnapshotRefs(sheets);
         hasUserEditedRef.current = false;
         const nowStr = new Date().toLocaleTimeString('th-TH');
         setLastSavedCloudTime(nowStr);
@@ -947,8 +992,8 @@ export default function App() {
         if (isQuota) {
           recordQuotaExhausted();
         }
-        // Always reset user edited ref and set lastSavedSheetsJsonRef to avoid infinite re-render loops!
-        lastSavedSheetsJsonRef.current = currentJson;
+        // Keep local snapshot in sync so local edits aren't lost or looped
+        updateLastSavedSnapshotRefs(sheets);
         hasUserEditedRef.current = false;
 
         const errorMsg = isQuota
@@ -972,7 +1017,7 @@ export default function App() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly, showToast]);
+  }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly, showToast, updateLastSavedSnapshotRefs]);
 
   // Calculations
   const totalKva = useMemo(() => {
@@ -1117,7 +1162,13 @@ export default function App() {
         updatedAt: new Date().toISOString()
       };
 
-      setSheets(prev => [...prev, newSheet]);
+      setSheets(prev => {
+        const next = [...prev, newSheet];
+        try {
+          localStorage.setItem(STORAGE_KEY_SHEETS, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
       setActiveSheetId(newId);
       showToast(`สร้างหน้าใหม่ ${newSheet.sheetNo} ${newSheet.title} เรียบร้อยแล้ว`);
     }
@@ -1138,7 +1189,13 @@ export default function App() {
       updatedAt: new Date().toISOString()
     };
 
-    setSheets(prev => [...prev, newSheet]);
+    setSheets(prev => {
+      const next = [...prev, newSheet];
+      try {
+        localStorage.setItem(STORAGE_KEY_SHEETS, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     setActiveSheetId(newId);
     showToast(`คัดลอกหน้า ${newSheet.sheetNo} เรียบร้อยแล้ว`);
   };
@@ -1160,11 +1217,19 @@ export default function App() {
         hasUserEditedRef.current = true;
         setSheets(prev => {
           const remaining = prev.filter(s => s.id !== sheetId);
-          if (activeSheetId === sheetId) {
+          if (activeSheetId === sheetId && remaining[0]) {
             setActiveSheetId(remaining[0].id);
           }
+          try {
+            localStorage.setItem(STORAGE_KEY_SHEETS, JSON.stringify(remaining));
+          } catch {}
           return remaining;
         });
+        if (auth.currentUser) {
+          deleteSheetFromCloudFirestore(sheetId).catch((err) => {
+            console.warn('Failed to delete sheet from Firestore:', err);
+          });
+        }
         showToast(`ลบหน้า ${target?.sheetNo} เรียบร้อยแล้ว`, 'info');
       }
     });
