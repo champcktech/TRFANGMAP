@@ -16,6 +16,7 @@ interface SheetTabsProps {
   sheets: DiagramSheet[];
   activeSheetId: string;
   isReadOnly?: boolean;
+  canDeleteSheet?: boolean;
   onSelectSheet: (id: string) => void;
   onOpenNewSheetModal: () => void;
   onOpenEditSheetModal: (sheet: DiagramSheet) => void;
@@ -45,6 +46,7 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
   sheets = [],
   activeSheetId,
   isReadOnly = false,
+  canDeleteSheet = true,
   onSelectSheet,
   onOpenNewSheetModal,
   onOpenEditSheetModal,
@@ -253,7 +255,7 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                     <span>คัดลอกหน้านี้ (Duplicate)</span>
                   </button>
 
-                  {sheets.length > 1 && (
+                  {canDeleteSheet && sheets.length > 1 && (
                     <button
                       onClick={() => {
                         onDeleteSheet(sheet.id);

@@ -1,27 +1,22 @@
 import React, { useState } from 'react';
-import { 
-  Zap, 
-  Lock, 
-  Mail, 
-  KeyRound, 
-  User, 
-  Eye, 
-  EyeOff, 
-  ArrowRight, 
-  ShieldCheck, 
-  AlertCircle, 
-  CheckCircle2, 
+import {
+  Zap,
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  ShieldCheck,
+  AlertCircle,
+  CheckCircle2,
   Loader2,
   HelpCircle,
-  Sparkles,
   X
 } from 'lucide-react';
-import { 
-  signInWithGoogle, 
-  signInWithEmail, 
-  registerWithEmail, 
-  signInAsGuest, 
-  sendResetPassword 
+import {
+  signInWithGoogle,
+  signInWithEmail,
+  sendResetPassword
 } from '../services/firebaseDbService';
 
 interface LoginPageProps {
@@ -31,14 +26,11 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly, onClose }) => {
-  const [tab, setTab] = useState<'signin' | 'register'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loadingMethod, setLoadingMethod] = useState<'google' | 'email' | 'guest' | null>(null);
+  const [loadingMethod, setLoadingMethod] = useState<'google' | 'email' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isResetOpen, setIsResetOpen] = useState(false);
@@ -50,14 +42,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
     const code = err?.code || '';
     switch (code) {
       case 'auth/user-not-found':
-        return 'ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาตรวจสอบอีเมลหรือสมัครสมาชิกใหม่';
+        return 'ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาติดต่อผู้ดูแลระบบเพื่อขอรับสิทธิ์เข้าใช้งาน';
       case 'auth/wrong-password':
       case 'auth/invalid-credential':
         return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง';
-      case 'auth/email-already-in-use':
-        return 'อีเมลนี้ถูกลงทะเบียนไว้แล้ว กรุณาเข้าสู่ระบบแทน';
-      case 'auth/weak-password':
-        return 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร';
       case 'auth/invalid-email':
         return 'รูปแบบอีเมลไม่ถูกต้อง กรุณากรอกอีเมลที่ถูกต้อง';
       case 'auth/popup-closed-by-user':
@@ -69,7 +57,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
       case 'auth/too-many-requests':
         return 'มีการพยายามเข้าสู่ระบบผิดหลายครั้งเกินไป ระบบถูกระงับชั่วคราวเพื่อความปลอดภัย';
       case 'auth/unauthorized-domain':
-        return 'โดเมนของเว็บไซต์นี้ยังไม่ได้เพิ่มใน Authorized Domains ของ Google/Firebase แนะนำให้ใช้วิธีสมัคร/เข้าสู่ระบบด้วย "อีเมลและรหัสผ่าน" ด้านล่าง หรือกด "เข้าใช้งานแบบผู้เยี่ยมชม" หรือกด "เข้าดูผัง" ได้ทันทีครับ';
+        return 'โดเมนของเว็บไซต์นี้ยังไม่ได้เพิ่มใน Authorized Domains ของ Google/Firebase กรุณาเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน หรือกด "เข้าดูผัง" แทนครับ';
       default:
         return err?.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง';
     }
@@ -106,42 +94,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
       return;
     }
 
-    if (tab === 'register') {
-      if (password.length < 6) {
-        setError('รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
-        return;
-      }
-      if (password !== confirmPassword) {
-        setError('รหัสผ่านยืนยันไม่ตรงกับรหัสผ่านที่ตั้ง');
-        return;
-      }
-    }
-
     setLoading(true);
     setLoadingMethod('email');
 
     try {
-      if (tab === 'signin') {
-        await signInWithEmail(email, password);
-      } else {
-        await registerWithEmail(email, password, displayName);
-      }
-      onSuccess?.();
-    } catch (err: any) {
-      setError(formatAuthError(err));
-    } finally {
-      setLoading(false);
-      setLoadingMethod(null);
-    }
-  };
-
-  const handleGuestSignIn = async () => {
-    setError(null);
-    setSuccessMessage(null);
-    setLoading(true);
-    setLoadingMethod('guest');
-    try {
-      await signInAsGuest();
+      await signInWithEmail(email, password);
       onSuccess?.();
     } catch (err: any) {
       setError(formatAuthError(err));
@@ -173,18 +130,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
 
   return (
     <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 p-4 text-slate-100 relative overflow-hidden font-sans select-none">
-      {/* Background Blueprint Decorative Grid Pattern */}
-      <div 
-        className="absolute inset-0 pointer-events-none opacity-20"
-        style={{
-          backgroundImage: `
-            linear-gradient(to right, rgba(99, 102, 241, 0.15) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(99, 102, 241, 0.15) 1px, transparent 1px)
-          `,
-          backgroundSize: '40px 40px'
-        }}
-      />
-
       {/* Subtle Glow Spheres */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none animate-pulse" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
@@ -207,7 +152,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25 mb-3.5 ring-4 ring-indigo-500/10">
             <Zap className="w-7 h-7 fill-white" />
           </div>
-          
+
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
             ระบบผังหม้อแปลงและวงจรจำหน่าย
           </h1>
@@ -216,7 +161,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
           </p>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-[11px] font-medium text-slate-600 dark:text-slate-300">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            <span>เข้าสู่ระบบเพื่อแก้ไขและบันทึกข้อมูลผังวงจร</span>
+            <span>เฉพาะเจ้าหน้าที่ที่ได้รับสิทธิ์เท่านั้น</span>
           </div>
         </div>
 
@@ -300,62 +245,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
             <div className="w-full border-t border-slate-200 dark:border-slate-800" />
           </div>
           <span className="relative px-3 bg-white dark:bg-slate-900 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-            หรือใช้อีเมลและรหัสผ่าน
+            หรือเข้าสู่ระบบด้วยอีเมลเจ้าหน้าที่
           </span>
         </div>
 
-        {/* Sign In vs Register Tabs */}
-        <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl mb-4 border border-slate-200 dark:border-slate-700/60">
-          <button
-            type="button"
-            onClick={() => {
-              setTab('signin');
-              setError(null);
-            }}
-            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              tab === 'signin'
-                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-xs'
-                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-            }`}
-          >
-            เข้าสู่ระบบ (Sign In)
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTab('register');
-              setError(null);
-            }}
-            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              tab === 'register'
-                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-xs'
-                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-            }`}
-          >
-            สมัครสมาชิกใหม่ (Register)
-          </button>
-        </div>
-
-        {/* Email & Password Form */}
+        {/* Email & Password Sign-In Form */}
         <form onSubmit={handleEmailSubmit} className="space-y-3.5">
-          {tab === 'register' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                ชื่อผู้ใช้งาน / แผนก
-              </label>
-              <div className="relative">
-                <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="เช่น สมชาย (ผบค. กฟส.ฝาง)"
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/90 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
-                />
-              </div>
-            </div>
-          )}
-
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               อีเมล (Email)
@@ -378,18 +273,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 รหัสผ่าน (Password)
               </label>
-              {tab === 'signin' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsResetOpen(true);
-                    setResetEmail(email);
-                  }}
-                  className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                >
-                  ลืมรหัสผ่าน?
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsResetOpen(true);
+                  setResetEmail(email);
+                }}
+                className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+              >
+                ลืมรหัสผ่าน?
+              </button>
             </div>
             <div className="relative">
               <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -398,37 +291,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="อย่างน้อย 6 ตัวอักษร"
+                placeholder="กรอกรหัสผ่าน"
                 className="w-full pl-9 pr-10 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/90 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
-
-          {tab === 'register' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                ยืนยันรหัสผ่าน (Confirm Password)
-              </label>
-              <div className="relative">
-                <KeyRound className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="กรอกรหัสผ่านซ้ำอีกครั้ง"
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/90 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
-                />
-              </div>
-            </div>
-          )}
 
           <button
             type="submit"
@@ -439,32 +313,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
               <Loader2 className="w-4 h-4 animate-spin text-white" />
             ) : (
               <>
-                <span>{tab === 'signin' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิกและเข้าสู่ระบบ'}</span>
+                <span>เข้าสู่ระบบ</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
           </button>
         </form>
 
-        {/* Quick Guest / Demo Option */}
-        <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-800/80 text-center">
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2 font-medium">
-            หรือทดลองเข้าใช้งานทันทีโดยไม่ต้องกรอกรหัสผ่าน
-          </p>
-          <button
-            type="button"
-            onClick={handleGuestSignIn}
-            disabled={loading}
-            className="text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 inline-flex items-center gap-1.5 transition-colors cursor-pointer py-1 px-3 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            {loadingMethod === 'guest' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            )}
-            <span>เข้าใช้งานแบบผู้เยี่ยมชมชั่วคราว (Guest Access)</span>
-          </button>
-        </div>
+        {/* Access Notice */}
+        <p className="mt-4 text-center text-[11px] text-slate-500 dark:text-slate-400">
+          ไม่มีระบบสมัครสมาชิกด้วยตนเอง หากต้องการสิทธิ์แก้ไขกรุณาติดต่อผู้ดูแลระบบ
+        </p>
       </div>
 
       {/* Forgot Password Modal */}
@@ -493,14 +352,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onEnterViewOnly
                 <button
                   type="button"
                   onClick={() => setIsResetOpen(false)}
-                  className="flex-1 py-2 px-3 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+                  className="flex-1 py-2 px-3 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={resetLoading}
-                  className="flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  className="flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
                   {resetLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'ส่งลิงก์'}
                 </button>

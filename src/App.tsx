@@ -8,6 +8,8 @@ import {
   GoogleSheetConfig,
   DiagramSheet,
   TransformerDraft,
+  UserRole,
+  AccessDenyReason,
   countTransformerUnits
 } from './types';
 import { 
@@ -36,9 +38,10 @@ import { LoginPage } from './components/LoginPage';
 import { TransformerDraftModal } from './components/TransformerDraftModal';
 import { DraftApprovalModal } from './components/DraftApprovalModal';
 import { DataRecoveryModal } from './components/DataRecoveryModal';
+import { UserPermissionsModal } from './components/UserPermissionsModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { FANG_PRESET_SHEETS, scanLocalStorageForBackups } from './data/fangSubstationPresetData';
-import { CheckCircle2, AlertCircle, Info, Undo2, Zap, RotateCcw, AlertTriangle, Sparkles } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info, Undo2, Zap, RotateCcw, AlertTriangle, Sparkles, ShieldAlert, Eye, LogOut, Mail } from 'lucide-react';
 
 import { decodeSheetsFromPayload } from './utils/shareUtils';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -51,6 +54,9 @@ import {
   subscribeToCloudSheets,
   deleteSheetFromCloudFirestore,
   signOutFromCloud,
+  checkUserAccessRole,
+  resendVerificationEmail,
+  SUPER_ADMIN_EMAIL,
   isQuotaError,
   isCloudWriteQuotaExhausted,
   recordQuotaExhausted,
@@ -498,8 +504,13 @@ export default function App() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [accessDenyReason, setAccessDenyReason] = useState<AccessDenyReason | null>(null);
+  const [isCheckingPermission, setIsCheckingPermission] = useState<boolean>(false);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState<boolean>(false);
+  const pendingEditModeOnLoginRef = useRef<boolean>(false);
   const [cloudUser, setCloudUser] = useState<{ uid: string; email?: string | null; displayName?: string | null } | null>(null);
   const [isCloudAutoSync, setIsCloudAutoSync] = useState<boolean>(true);
   const [isCloudInitialLoaded, setIsCloudInitialLoaded] = useState<boolean>(false);
@@ -580,10 +591,18 @@ export default function App() {
     });
   }, [showToast]);
 
+  const isAuthorizedEditor = userRole === 'super_admin' || userRole === 'admin' || userRole === 'editor';
+  const isAdminRole = userRole === 'super_admin' || userRole === 'admin';
+
   const handleToggleReadOnly = useCallback(() => {
     if (!currentUser) {
+      pendingEditModeOnLoginRef.current = true;
       setIsLoginModalOpen(true);
-      showToast('กรุณาเข้าสู่ระบบก่อนเพื่อแก้ไขผังวงจร', 'info');
+      showToast('กรุณาเข้าสู่ระบบด้วยบัญชีที่ได้รับสิทธิ์ก่อนเพื่อแก้ไขผังวงจร', 'info');
+      return;
+    }
+    if (!isAuthorizedEditor) {
+      showToast('บัญชีของท่านไม่มีสิทธิ์เข้าสู่โหมดแก้ไข (เข้าใช้งานได้เฉพาะโหมดดูอย่างเดียว)', 'error');
       return;
     }
     setIsReadOnly(prev => {
@@ -594,7 +613,7 @@ export default function App() {
       );
       return next;
     });
-  }, [currentUser, showToast]);
+  }, [currentUser, isAuthorizedEditor, showToast]);
 
   const handleToggleDraggable = useCallback(() => {
     setIsDraggable(prev => {
@@ -607,8 +626,27 @@ export default function App() {
     });
   }, [showToast]);
 
+  // Live Synchronization with Firebase Firestore as Primary Source of Truth (SSOT)
+  const lastSavedSheetsJsonRef = useRef<string>('');
+  const lastSavedSheetComparableMapRef = useRef<Map<string, string>>(new Map());
+  const isCloudSyncingRef = useRef<boolean>(false);
+  const quotaExceededToastShownRef = useRef<boolean>(false);
+
+  const updateLastSavedSnapshotRefs = useCallback((list: DiagramSheet[]) => {
+    lastSavedSheetsJsonRef.current = serializeSheetsComparable(list);
+    const nextMap = new Map<string, string>();
+    for (const s of list) {
+      nextMap.set(s.id, serializeSingleSheetComparable(s));
+    }
+    lastSavedSheetComparableMapRef.current = nextMap;
+  }, []);
+
   const handleManualSaveToCloud = useCallback(async (target?: 'all' | 'current' | string[] | string) => {
     if (isSavingToCloud) return;
+    if (!isAuthorizedEditor) {
+      showToast('บัญชีของท่านไม่มีสิทธิ์บันทึกข้อมูลขึ้น Cloud', 'error');
+      return;
+    }
     setIsSavingToCloud(true);
     const sheetsJson = JSON.stringify(sheets);
     const nowStr = new Date().toLocaleTimeString('th-TH');
@@ -698,7 +736,7 @@ export default function App() {
     } finally {
       setIsSavingToCloud(false);
     }
-  }, [sheets, activeSheetId, totalAllTransformers, isSavingToCloud, showToast]);
+  }, [sheets, activeSheetId, totalAllTransformers, isSavingToCloud, isAuthorizedEditor, updateLastSavedSnapshotRefs, showToast]);
 
   const handleRestoreFullFangDataset = useCallback(async () => {
     let total = 0;
@@ -778,7 +816,47 @@ export default function App() {
     } catch (e) {}
   }, [theme]);
 
-  // Track Firebase Authentication State
+  const verifyCurrentUserPermission = useCallback(async (user: User | null) => {
+    if (!user) {
+      setUserRole(null);
+      setAccessDenyReason(null);
+      setIsCheckingPermission(false);
+      return;
+    }
+
+    setIsCheckingPermission(true);
+    try {
+      const result = await checkUserAccessRole(user);
+      setUserRole(result.role);
+      setAccessDenyReason(result.reason || null);
+
+      if (result.role === 'unauthorized') {
+        // Force view-only if user tries to enter edit mode without permission
+        if (pendingEditModeOnLoginRef.current) {
+          pendingEditModeOnLoginRef.current = false;
+          setIsLoginModalOpen(false);
+          setIsReadOnly(true);
+          showToast(
+            result.reason === 'not_verified'
+              ? 'อีเมลนี้ยังไม่ได้ยืนยันตัวตน จึงไม่สามารถเข้าโหมดแก้ไขได้'
+              : 'บัญชีนี้ไม่มีสิทธิ์แก้ไขผังวงจร (เปิดได้เฉพาะโหมดดูอย่างเดียว)',
+            'error'
+          );
+        }
+      } else {
+        setIsLoginModalOpen(false);
+        if (pendingEditModeOnLoginRef.current) {
+          pendingEditModeOnLoginRef.current = false;
+          setIsReadOnly(false);
+          showToast('เข้าสู่ระบบสำเร็จ ยินดีต้อนรับสู่โหมดแก้ไขผังวงจร', 'success');
+        }
+      }
+    } finally {
+      setIsCheckingPermission(false);
+    }
+  }, [showToast]);
+
+  // Track Firebase Authentication State & Check RBAC Permission
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -789,28 +867,17 @@ export default function App() {
           email: user.email,
           displayName: user.displayName
         });
+        verifyCurrentUserPermission(user);
       } else {
         setCloudUser(null);
+        setUserRole(null);
+        setAccessDenyReason(null);
+        setIsCheckingPermission(false);
       }
     });
 
     return () => unsubscribe();
-  }, []);
-
-  // Live Synchronization with Firebase Firestore as Primary Source of Truth (SSOT)
-  const lastSavedSheetsJsonRef = useRef<string>('');
-  const lastSavedSheetComparableMapRef = useRef<Map<string, string>>(new Map());
-  const isCloudSyncingRef = useRef<boolean>(false);
-  const quotaExceededToastShownRef = useRef<boolean>(false);
-
-  const updateLastSavedSnapshotRefs = useCallback((list: DiagramSheet[]) => {
-    lastSavedSheetsJsonRef.current = serializeSheetsComparable(list);
-    const nextMap = new Map<string, string>();
-    for (const s of list) {
-      nextMap.set(s.id, serializeSingleSheetComparable(s));
-    }
-    lastSavedSheetComparableMapRef.current = nextMap;
-  }, []);
+  }, [verifyCurrentUserPermission]);
 
   useEffect(() => {
     let isMounted = true;
@@ -925,7 +992,7 @@ export default function App() {
   useEffect(() => {
     // CRITICAL: Do NOT auto-save if cloud hasn't initially loaded, or if the user has NOT made any manual edits in this session!
     // This prevents stale localStorage on other devices from overwriting authoritative Cloud Firestore data upon simply opening the app.
-    if (!isCloudAutoSync || !isCloudInitialLoaded || isReadOnly || !hasUserEditedRef.current) return;
+    if (!isCloudAutoSync || !isCloudInitialLoaded || isReadOnly || !isAuthorizedEditor || !hasUserEditedRef.current) return;
 
     // Check if sheets data has actually changed compared to the last saved payload
     const currentComparable = serializeSheetsComparable(sheets);
@@ -1017,7 +1084,7 @@ export default function App() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly, showToast, updateLastSavedSnapshotRefs]);
+  }, [sheets, isCloudAutoSync, isCloudInitialLoaded, isReadOnly, isAuthorizedEditor, showToast, updateLastSavedSnapshotRefs]);
 
   // Calculations
   const totalKva = useMemo(() => {
@@ -1201,6 +1268,10 @@ export default function App() {
   };
 
   const handleDeleteSheet = (sheetId: string) => {
+    if (!isAdminRole) {
+      showToast('เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถลบหน้าผังได้', 'error');
+      return;
+    }
     if (sheets.length <= 1) {
       showToast('ไม่สามารถลบหน้าสุดท้ายได้', 'error');
       return;
@@ -1673,7 +1744,7 @@ export default function App() {
   };
 
   const handleOpenAddModal = (pos?: { x: number; y: number }) => {
-    if (isReadOnly && !currentUser) {
+    if (isReadOnly || !isAuthorizedEditor) {
       handleOpenProposeCreateDraft(pos);
       return;
     }
@@ -1683,7 +1754,7 @@ export default function App() {
   };
 
   const handleEditTransformer = (t: Transformer) => {
-    if (isReadOnly && !currentUser) {
+    if (isReadOnly || !isAuthorizedEditor) {
       handleOpenProposeEditDraft(t);
       return;
     }
@@ -1735,8 +1806,8 @@ export default function App() {
     };
   }, [sheets, activeSheetId]);
 
-  // 1. Auth Loading Splash Screen
-  if (isAuthLoading) {
+  // 1. Auth & Permission Loading Splash Screen
+  if (isAuthLoading || (currentUser && isCheckingPermission && !isReadOnly)) {
     return (
       <div className="w-screen h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 text-white font-sans select-none p-4">
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-purple-600 flex items-center justify-center shadow-2xl shadow-indigo-500/25 mb-4 animate-bounce">
@@ -1752,12 +1823,111 @@ export default function App() {
   if (!currentUser && !isReadOnly) {
     return (
       <LoginPage 
-        onSuccess={() => showToast('เข้าสู่ระบบสำเร็จ ยินดีต้อนรับสู่ระบบผังวงจรไฟฟ้า')} 
+        onSuccess={() => showToast('เข้าสู่ระบบสำเร็จ กำลังตรวจสอบสิทธิ์...')} 
         onEnterViewOnly={() => {
           setIsReadOnly(true);
           showToast('เข้าสู่โหมดดูผังวงจรอย่างเดียว (ไม่ต้องเข้าสู่ระบบ)', 'info');
         }}
       />
+    );
+  }
+
+  // 3. Access Control Gate: Logged-in user is NOT authorized to edit
+  if (currentUser && !isReadOnly && userRole === 'unauthorized') {
+    return (
+      <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 p-4 text-slate-100 font-sans select-none">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 text-slate-800 dark:text-slate-100 text-center space-y-4">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 ring-4 ring-amber-500/10">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+
+          <div>
+            <h2 className="text-lg font-black text-slate-900 dark:text-white">
+              {accessDenyReason === 'not_verified'
+                ? 'บัญชียังไม่ได้ยืนยันอีเมล'
+                : accessDenyReason === 'inactive'
+                ? 'บัญชีถูกระงับสิทธิ์การแก้ไขชั่วคราว'
+                : 'บัญชีนี้ไม่มีสิทธิ์เข้าใช้งานโหมดแก้ไข'}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              บัญชีที่เข้าสู่ระบบ: <span className="font-bold text-slate-800 dark:text-slate-200">{currentUser.email || 'ไม่ระบุอีเมล'}</span>
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            {accessDenyReason === 'not_verified' ? (
+              <span>
+                เพื่อความปลอดภัย ระบบกำหนดให้บัญชีอีเมลต้องผ่านการยืนยันอีเมลก่อนเข้าแก้ไขข้อมูล กรุณากดส่งลิงก์ยืนยันและเปิดลิงก์ในกล่องข้อความของท่าน
+              </span>
+            ) : accessDenyReason === 'inactive' ? (
+              <span>
+                ผู้ดูแลระบบได้ระงับสิทธิ์การแก้ไขของบัญชีนี้ไว้ชั่วคราว กรุณาติดต่อผู้ดูแลระบบ ({SUPER_ADMIN_EMAIL})
+              </span>
+            ) : (
+              <span>
+                ระบบจำกัดสิทธิ์การแก้ไขเฉพาะเจ้าหน้าที่ที่ได้รับอนุญาตเท่านั้น หากต้องการสิทธิ์แก้ไข กรุณาติดต่อผู้ดูแลระบบ ({SUPER_ADMIN_EMAIL}) เพื่อเพิ่มอีเมลของท่าน
+              </span>
+            )}
+          </div>
+
+          {accessDenyReason === 'not_verified' && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await resendVerificationEmail();
+                    showToast(`ส่งลิงก์ยืนยันอีเมลไปยัง ${currentUser.email} แล้ว`, 'success');
+                  } catch (err: any) {
+                    showToast(err?.message || 'ไม่สามารถส่งอีเมลยืนยันได้ กรุณาลองใหม่ภายหลัง', 'error');
+                  }
+                }}
+                className="flex-1 py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>ส่งลิงก์ยืนยัน</span>
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await currentUser.reload();
+                    await verifyCurrentUserPermission(auth.currentUser);
+                  } catch {}
+                }}
+                className="flex-1 py-2 px-3 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
+              >
+                ตรวจสอบอีกครั้ง
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsReadOnly(true);
+                showToast('เข้าสู่โหมดดูผังวงจรอย่างเดียว', 'info');
+              }}
+              className="flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow cursor-pointer"
+            >
+              <Eye className="w-4 h-4" />
+              <span>เข้าดูผังอย่างเดียว</span>
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                await signOutFromCloud();
+                showToast('ออกจากระบบแล้ว', 'info');
+              }}
+              className="flex-1 py-2.5 px-4 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-red-50 dark:hover:bg-red-950/40 text-slate-700 dark:text-slate-200 hover:text-red-600 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>ออกจากระบบ / เปลี่ยนบัญชี</span>
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -1781,7 +1951,12 @@ export default function App() {
         sheets={sheets}
         totalSheets={sheets.length}
         currentUser={currentUser}
-        onSignIn={() => setIsLoginModalOpen(true)}
+        userRole={userRole}
+        onOpenPermissionsModal={() => setIsPermissionsModalOpen(true)}
+        onSignIn={() => {
+          pendingEditModeOnLoginRef.current = true;
+          setIsLoginModalOpen(true);
+        }}
         onSignOut={handleSignOut}
         onSelectView={setCurrentView}
         onSelectSheet={handleSelectSheet}
@@ -1839,6 +2014,7 @@ export default function App() {
         sheets={sheets}
         activeSheetId={activeSheet.id}
         isReadOnly={isReadOnly}
+        canDeleteSheet={isAdminRole}
         onSelectSheet={handleSelectSheet}
         onOpenNewSheetModal={handleOpenNewSheetModal}
         onOpenEditSheetModal={handleOpenEditSheetModal}
@@ -2199,16 +2375,27 @@ export default function App() {
           <LoginPage
             onSuccess={() => {
               setIsLoginModalOpen(false);
-              setIsReadOnly(false);
-              showToast('เข้าสู่ระบบสำเร็จ ยินดีต้อนรับสู่โหมดแก้ไขผังวงจร');
             }}
             onEnterViewOnly={() => {
+              pendingEditModeOnLoginRef.current = false;
               setIsLoginModalOpen(false);
               setIsReadOnly(true);
             }}
-            onClose={() => setIsLoginModalOpen(false)}
+            onClose={() => {
+              pendingEditModeOnLoginRef.current = false;
+              setIsLoginModalOpen(false);
+            }}
           />
         </div>
+      )}
+
+      {/* Super Admin User Permissions Modal */}
+      {userRole === 'super_admin' && (
+        <UserPermissionsModal
+          isOpen={isPermissionsModalOpen}
+          onClose={() => setIsPermissionsModalOpen(false)}
+          showToast={showToast}
+        />
       )}
 
       {/* Transformer Draft Proposal Modal (For Guest or View-only users) */}
@@ -2237,6 +2424,8 @@ export default function App() {
           email: currentUser.email,
           displayName: currentUser.displayName
         } : null}
+        canApprove={isAuthorizedEditor}
+        canDelete={isAdminRole}
         onApproveAndApply={handleApproveAndApplyDraft}
         onNavigateToTransformer={(targetSheetId, transformerId) => {
           setActiveSheetId(targetSheetId);

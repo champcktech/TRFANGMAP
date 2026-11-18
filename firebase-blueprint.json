@@ -169,6 +169,60 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "AuthorizedUser": {
+      "title": "AuthorizedUser",
+      "description": "Whitelist entry defining staff members authorized to edit or administer the PEA Single Line Diagram workspace.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Lowercase email address of the authorized staff member",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Staff name or department label",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "description": "Access role: admin (full control including delete & approvals) or editor (diagram edits & approvals)",
+          "enum": ["admin", "editor"]
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether this user currently has active edit access"
+        },
+        "addedBy": {
+          "type": "string",
+          "description": "Email of the super admin who granted access",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when access was granted"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when access entry was last updated"
+        }
+      },
+      "required": [
+        "email",
+        "displayName",
+        "role",
+        "active",
+        "addedBy",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -183,6 +237,12 @@
         "$ref": "#/entities/TransformerDraft"
       },
       "description": "Stores proposed transformer additions and edits submitted by guests or operators awaiting admin confirmation."
+    },
+    "/authorized_users/{userKey}": {
+      "schema": {
+        "$ref": "#/entities/AuthorizedUser"
+      },
+      "description": "Stores authorized staff emails and roles managed by the super administrator."
     }
   }
 }

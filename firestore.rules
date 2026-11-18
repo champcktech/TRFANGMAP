@@ -19,6 +19,40 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email is string &&
+        request.auth.token.email.size() <= 120;
+    }
+
+    function emailToKey(email) {
+      return email.lower().replace('[^a-z0-9]', '_');
+    }
+
+    function isSuperAdmin() {
+      return isVerifiedUser() && request.auth.token.email.lower() == 'champ5698@gmail.com';
+    }
+
+    function hasAuthorizedRole(roles) {
+      return isVerifiedUser() &&
+        exists(/databases/$(database)/documents/authorized_users/$(emailToKey(request.auth.token.email))) &&
+        get(/databases/$(database)/documents/authorized_users/$(emailToKey(request.auth.token.email))).data.active == true &&
+        get(/databases/$(database)/documents/authorized_users/$(emailToKey(request.auth.token.email))).data.role in roles;
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || hasAuthorizedRole(['admin']);
+    }
+
+    function isAuthorizedEditor() {
+      return isSuperAdmin() || hasAuthorizedRole(['admin', 'editor']);
+    }
+
     function isSharedWorkspace(workspaceId) {
       return workspaceId == 'pea-fang-shared';
     }
@@ -109,16 +143,49 @@ service cloud.firestore {
       data.updatedAt is timestamp;
     }
 
+    function isValidAuthorizedUser(data) {
+      return data.keys().hasAll([
+        'email',
+        'displayName',
+        'role',
+        'active',
+        'addedBy',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'email',
+        'displayName',
+        'role',
+        'active',
+        'addedBy',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.email is string && data.email.size() >= 3 && data.email.size() <= 120 &&
+      data.email == data.email.lower() &&
+      data.displayName is string && data.displayName.size() <= 120 &&
+      (data.role == 'admin' || data.role == 'editor') &&
+      data.active is bool &&
+      data.addedBy is string && data.addedBy.size() >= 1 && data.addedBy.size() <= 120 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
     match /sheets/{sheetId} {
-      // Allow read (both get and list) for all devices and viewers so diagrams stay synchronized
+      // Public read allowed so View-Only links and diagrams display without login
       allow read: if true;
 
-      allow create: if isValidId(sheetId) &&
+      // Only verified authorized editors or admins can create/update sheets
+      allow create: if isVerifiedUser() &&
+        isValidId(sheetId) &&
         isValidSheet(incoming()) &&
         incoming().createdAt == request.time &&
-        incoming().updatedAt == request.time;
+        incoming().updatedAt == request.time &&
+        isAuthorizedEditor();
 
-      allow update: if isValidId(sheetId) &&
+      allow update: if isVerifiedUser() &&
+        isValidId(sheetId) &&
         isValidSheet(incoming()) &&
         isSharedWorkspace(existing().workspaceId) &&
         incoming().workspaceId == existing().workspaceId &&
@@ -135,28 +202,32 @@ service cloud.firestore {
           'feederPaths',
           'annotations',
           'updatedAt'
-        ]);
+        ]) &&
+        isAuthorizedEditor();
 
-      allow delete: if request.auth != null &&
+      // Only verified admins can delete sheets
+      allow delete: if isVerifiedUser() &&
         isValidId(sheetId) &&
-        isSharedWorkspace(existing().workspaceId);
+        isSharedWorkspace(existing().workspaceId) &&
+        isAdmin();
     }
 
     match /transformer_drafts/{draftId} {
       allow get: if isValidId(draftId);
       allow list: if true;
 
-      // Unauthenticated guests and logged-in users can both submit a pending draft
+      // Viewers and staff can submit a pending draft
       allow create: if isValidId(draftId) &&
         isValidDraft(incoming()) &&
         incoming().status == 'pending' &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
 
-      // Only authenticated admin users can approve or reject drafts
-      allow update: if request.auth != null &&
+      // Only verified authorized editors or admins can approve or reject pending drafts
+      allow update: if isVerifiedUser() &&
         isValidId(draftId) &&
         isValidDraft(incoming()) &&
+        existing().status == 'pending' &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
         incoming().diff(existing()).affectedKeys().hasOnly([
@@ -165,10 +236,49 @@ service cloud.firestore {
           'reviewedAt',
           'reviewNote',
           'updatedAt'
+        ]) &&
+        isAuthorizedEditor();
+
+      // Only verified admins can delete drafts
+      allow delete: if isVerifiedUser() &&
+        isValidId(draftId) &&
+        isAdmin();
+    }
+
+    match /authorized_users/{userKey} {
+      // Users can check their own authorization record; Super Admin can read any
+      allow get: if isVerifiedUser() &&
+        isValidId(userKey) &&
+        (userKey == emailToKey(request.auth.token.email) || isSuperAdmin());
+
+      // Super Admin can list all authorized staff; regular verified user can only query their own email
+      allow list: if isSuperAdmin() ||
+        (isVerifiedUser() && existing().email == request.auth.token.email.lower());
+
+      allow create: if isSuperAdmin() &&
+        isValidId(userKey) &&
+        isValidAuthorizedUser(incoming()) &&
+        emailToKey(incoming().email) == userKey &&
+        incoming().addedBy == request.auth.token.email.lower() &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isSuperAdmin() &&
+        isValidId(userKey) &&
+        isValidAuthorizedUser(incoming()) &&
+        incoming().email == existing().email &&
+        incoming().addedBy == existing().addedBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName',
+          'role',
+          'active',
+          'updatedAt'
         ]);
 
-      // Delete drafts
-      allow delete: if isValidId(draftId);
+      allow delete: if isSuperAdmin() &&
+        isValidId(userKey);
     }
   }
 }

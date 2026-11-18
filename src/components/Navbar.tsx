@@ -32,9 +32,10 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  Cloud
+  Cloud,
+  ShieldCheck
 } from 'lucide-react';
-import { GoogleSheetConfig, DiagramSheet, Transformer, AnnotationLabel, countTransformerUnits } from '../types';
+import { GoogleSheetConfig, DiagramSheet, Transformer, AnnotationLabel, UserRole, countTransformerUnits } from '../types';
 
 interface NavbarProps {
   currentView: 'canvas' | 'table' | 'stats';
@@ -57,6 +58,8 @@ interface NavbarProps {
     email?: string | null;
     displayName?: string | null;
   } | null;
+  userRole?: UserRole | null;
+  onOpenPermissionsModal?: () => void;
   onSignIn?: () => void;
   onSignOut?: () => void;
   onSelectView: (view: 'canvas' | 'table' | 'stats') => void;
@@ -100,6 +103,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   sheets = [],
   totalSheets = 1,
   currentUser,
+  userRole,
+  onOpenPermissionsModal,
   onSignIn,
   onSignOut,
   onSelectView,
@@ -985,21 +990,45 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
+        {/* Super Admin User Permissions Management Button */}
+        {!isReadOnly && userRole === 'super_admin' && onOpenPermissionsModal && (
+          <button
+            id="btn-manage-permissions"
+            onClick={onOpenPermissionsModal}
+            title="จัดการสิทธิ์ผู้ใช้งาน (เพิ่ม/ลบ/จำกัดสิทธิ์เจ้าหน้าที่)"
+            className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all border border-purple-300 dark:border-purple-700 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 dark:hover:bg-purple-900/60 text-purple-800 dark:text-purple-200 cursor-pointer shadow-2xs"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+            <span className="hidden lg:inline">จัดการสิทธิ์</span>
+          </button>
+        )}
+
         {/* User Profile & Sign Out Button */}
         {currentUser && (
           <div className="relative group">
             <button
               id="btn-user-profile"
               onClick={onSignOut}
-              title={`เข้าสู่ระบบโดย: ${currentUser.email || currentUser.displayName || 'ผู้ใช้งาน'} (คลิกเพื่อออกจากระบบ)`}
+              title={`เข้าสู่ระบบโดย: ${currentUser.email || currentUser.displayName || 'ผู้ใช้งาน'} (${userRole === 'super_admin' ? 'Super Admin' : userRole === 'admin' ? 'Admin' : userRole === 'editor' ? 'Editor' : 'จำกัดสิทธิ์'}) (คลิกเพื่อออกจากระบบ)`}
               className="px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all bg-slate-100 hover:bg-red-50 dark:bg-slate-800 dark:hover:bg-red-950/40 text-slate-700 hover:text-red-600 dark:text-slate-200 dark:hover:text-red-400 border border-slate-200 dark:border-slate-700/80 hover:border-red-300 dark:hover:border-red-800 cursor-pointer"
             >
               <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
                 {(currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase()}
               </div>
-              <span className="hidden xl:inline max-w-[120px] truncate text-[11px]">
+              <span className="hidden xl:inline max-w-[110px] truncate text-[11px]">
                 {currentUser.displayName || currentUser.email?.split('@')[0] || 'ผู้ใช้งาน'}
               </span>
+              {userRole && userRole !== 'unauthorized' && (
+                <span className={`hidden md:inline px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
+                  userRole === 'super_admin'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300'
+                    : userRole === 'admin'
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300'
+                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300'
+                }`}>
+                  {userRole === 'super_admin' ? 'Owner' : userRole}
+                </span>
+              )}
               <LogOut className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-500 transition-colors shrink-0" />
             </button>
           </div>

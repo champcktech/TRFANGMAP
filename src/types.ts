@@ -150,3 +150,16 @@ export interface TransformerDraft {
   updatedAt: string;
 }
 
+export type UserRole = 'super_admin' | 'admin' | 'editor' | 'unauthorized';
+export type AccessDenyReason = 'not_verified' | 'not_authorized' | 'inactive';
+
+export interface AuthorizedUser {
+  id: string; // sanitized email key
+  email: string;
+  displayName: string;
+  role: 'admin' | 'editor';
+  active: boolean;
+  addedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}

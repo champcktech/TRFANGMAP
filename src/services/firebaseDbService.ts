@@ -16,15 +16,29 @@ import {
   signInWithPopup, 
   signOut,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInAnonymously,
-  updateProfile,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  User
 } from 'firebase/auth';
 import { db, auth, googleProvider, handleFirestoreError, OperationType } from '../firebase';
-import { DiagramSheet, Transformer, SwitchNode, FeederPath, AnnotationLabel, TransformerDraft } from '../types';
+import {
+  DiagramSheet,
+  Transformer,
+  SwitchNode,
+  FeederPath,
+  AnnotationLabel,
+  TransformerDraft,
+  UserRole,
+  AccessDenyReason,
+  AuthorizedUser
+} from '../types';
 
 export const SHARED_WORKSPACE_ID = 'pea-fang-shared';
+export const SUPER_ADMIN_EMAIL = 'champ5698@gmail.com';
+
+export function emailToAuthKey(email: string): string {
+  return email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
 
 export async function signInWithGoogle() {
   const result = await signInWithPopup(auth, googleProvider);
@@ -36,25 +50,66 @@ export async function signInWithEmail(email: string, pass: string) {
   return result.user;
 }
 
-export async function registerWithEmail(email: string, pass: string, displayName?: string) {
-  const result = await createUserWithEmailAndPassword(auth, email.trim(), pass);
-  if (displayName?.trim() && result.user) {
-    await updateProfile(result.user, { displayName: displayName.trim() });
-  }
-  return result.user;
-}
-
-export async function signInAsGuest() {
-  const result = await signInAnonymously(auth);
-  return result.user;
-}
-
 export async function sendResetPassword(email: string) {
   await sendPasswordResetEmail(auth, email.trim());
 }
 
+export async function resendVerificationEmail() {
+  if (!auth.currentUser) {
+    throw new Error('ไม่พบบัญชีผู้ใช้ที่เข้าสู่ระบบอยู่');
+  }
+  await sendEmailVerification(auth.currentUser);
+}
+
 export async function signOutFromCloud() {
   await signOut(auth);
+}
+
+/**
+ * Checks whether the signed-in Firebase user is authorized to edit or administer the workspace.
+ */
+export async function checkUserAccessRole(user: User | null): Promise<{
+  role: UserRole;
+  displayName?: string;
+  reason?: AccessDenyReason;
+}> {
+  if (!user || !user.email) {
+    return { role: 'unauthorized', reason: 'not_authorized' };
+  }
+
+  if (!user.emailVerified) {
+    return { role: 'unauthorized', reason: 'not_verified' };
+  }
+
+  const normalizedEmail = user.email.trim().toLowerCase();
+  if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+    return {
+      role: 'super_admin',
+      displayName: user.displayName || 'ผู้ดูแลระบบหลัก'
+    };
+  }
+
+  const userKey = emailToAuthKey(normalizedEmail);
+  const path = `authorized_users/${userKey}`;
+
+  try {
+    const snap = await withTimeout(getDoc(doc(db, 'authorized_users', userKey)), 5000);
+    if (!snap.exists()) {
+      return { role: 'unauthorized', reason: 'not_authorized' };
+    }
+    const data = snap.data();
+    if (!data.active) {
+      return { role: 'unauthorized', reason: 'inactive' };
+    }
+    const role: UserRole = data.role === 'admin' ? 'admin' : 'editor';
+    return {
+      role,
+      displayName: data.displayName || user.displayName || normalizedEmail.split('@')[0]
+    };
+  } catch (error: any) {
+    console.warn(`Permission check failed at ${path}:`, error);
+    return { role: 'unauthorized', reason: 'not_authorized' };
+  }
 }
 
 /**
@@ -747,3 +802,106 @@ export async function deleteTransformerDraft(draftId: string): Promise<void> {
   }
 }
 
+/**
+ * Subscribes to authorized staff list (Super Admin only)
+ */
+export function subscribeToAuthorizedUsers(
+  onUpdate: (users: AuthorizedUser[]) => void,
+  onError?: (err: any) => void
+): Unsubscribe {
+  const path = 'authorized_users';
+  return onSnapshot(
+    collection(db, path),
+    (snapshot) => {
+      const list: AuthorizedUser[] = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          email: data.email || '',
+          displayName: data.displayName || '',
+          role: data.role === 'admin' ? 'admin' : 'editor',
+          active: data.active !== false,
+          addedBy: data.addedBy || '',
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : new Date().toISOString()
+        };
+      });
+      list.sort((a, b) => a.email.localeCompare(b.email));
+      onUpdate(list);
+    },
+    (error) => {
+      console.warn('Authorized users subscription warning:', error);
+      if (onError) onError(error);
+    }
+  );
+}
+
+/**
+ * Adds a new authorized staff member (Super Admin only)
+ */
+export async function addAuthorizedUser(params: {
+  email: string;
+  displayName: string;
+  role: 'admin' | 'editor';
+}): Promise<void> {
+  const normalizedEmail = params.email.trim().toLowerCase().slice(0, 120);
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    throw new Error('รูปแบบอีเมลไม่ถูกต้อง');
+  }
+  if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+    throw new Error('อีเมลนี้เป็นผู้ดูแลระบบหลัก (Super Admin) อยู่แล้ว');
+  }
+  const userKey = emailToAuthKey(normalizedEmail);
+  const path = `authorized_users/${userKey}`;
+  const addedBy = (auth.currentUser?.email || SUPER_ADMIN_EMAIL).trim().toLowerCase().slice(0, 120);
+
+  try {
+    await setDoc(doc(db, 'authorized_users', userKey), {
+      email: normalizedEmail,
+      displayName: String(params.displayName || '').trim().slice(0, 120),
+      role: params.role === 'admin' ? 'admin' : 'editor',
+      active: true,
+      addedBy,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
+/**
+ * Updates an authorized staff member's role, displayName, or active status (Super Admin only)
+ */
+export async function updateAuthorizedUser(
+  userKey: string,
+  updates: {
+    displayName: string;
+    role: 'admin' | 'editor';
+    active: boolean;
+  }
+): Promise<void> {
+  const path = `authorized_users/${userKey}`;
+  try {
+    await updateDoc(doc(db, 'authorized_users', userKey), {
+      displayName: String(updates.displayName || '').trim().slice(0, 120),
+      role: updates.role === 'admin' ? 'admin' : 'editor',
+      active: Boolean(updates.active),
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+/**
+ * Removes an authorized staff member (Super Admin only)
+ */
+export async function removeAuthorizedUser(userKey: string): Promise<void> {
+  const path = `authorized_users/${userKey}`;
+  try {
+    await deleteDoc(doc(db, 'authorized_users', userKey));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}

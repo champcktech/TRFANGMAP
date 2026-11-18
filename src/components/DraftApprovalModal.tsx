@@ -33,6 +33,8 @@ interface DraftApprovalModalProps {
     email?: string | null;
     displayName?: string | null;
   } | null;
+  canApprove?: boolean;
+  canDelete?: boolean;
   onApproveAndApply: (draft: TransformerDraft) => Promise<void>;
   onNavigateToTransformer?: (sheetId: string, transformerId?: string, x?: number, y?: number) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
@@ -44,6 +46,8 @@ export const DraftApprovalModal: React.FC<DraftApprovalModalProps> = ({
   drafts = [],
   sheets = [],
   currentUser,
+  canApprove = false,
+  canDelete = false,
   onApproveAndApply,
   onNavigateToTransformer,
   showToast
@@ -56,7 +60,7 @@ export const DraftApprovalModal: React.FC<DraftApprovalModalProps> = ({
   const [isRejectingId, setIsRejectingId] = useState<string | null>(null);
   const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
 
-  const isAdmin = !!currentUser;
+  const isAdmin = !!currentUser && canApprove;
 
   // Count by status
   const counts = useMemo(() => {
@@ -133,7 +137,10 @@ export const DraftApprovalModal: React.FC<DraftApprovalModalProps> = ({
   };
 
   const handleDelete = async (draftId: string) => {
-    if (!isAdmin) return;
+    if (!canDelete) {
+      showToast('เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถลบแบบร่างได้', 'error');
+      return;
+    }
 
     setProcessingId(draftId);
     try {
@@ -542,7 +549,7 @@ export const DraftApprovalModal: React.FC<DraftApprovalModalProps> = ({
                       </button>
                     )}
 
-                    {isAdmin && (
+                    {isAdmin && canDelete && (
                       confirmDeleteDraftId !== activeDraft.id ? (
                         <button
                           type="button"
